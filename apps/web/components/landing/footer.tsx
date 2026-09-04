@@ -48,10 +48,10 @@ export function Footer() {
           <div className="space-y-2.5">
             <h4 className="text-xs font-semibold uppercase tracking-wider text-zinc-200">Developers</h4>
             <ul className="space-y-2 text-xs">
-              <li><a href="http://localhost:8000/api/v1/docs" target="_blank" rel="noreferrer" className="hover:text-white transition-colors">FastAPI Swagger</a></li>
-              <li><a href="http://localhost:8000/api/v1/health" target="_blank" rel="noreferrer" className="hover:text-white transition-colors">Health Telemetry</a></li>
+              <li><a href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'}/docs`} target="_blank" rel="noreferrer" className="hover:text-white transition-colors">FastAPI Swagger</a></li>
+              <li><a href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'}/health`} target="_blank" rel="noreferrer" className="hover:text-white transition-colors">Health Telemetry</a></li>
               <li><Link href="#how-it-works" className="hover:text-white transition-colors">Architecture</Link></li>
-              <li><a href="#" className="hover:text-white transition-colors">Security & Isolation</a></li>
+              <li><a href="#" className="hover:text-white transition-colors">Security &amp; Isolation</a></li>
             </ul>
           </div>
 

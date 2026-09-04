@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     @classmethod
     def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
         if isinstance(v, str) and not v.startswith("["):
-            return [i.strip() for i in v.split(",")]
+            return [i.strip() for i in v.split(",") if i.strip()]
         elif isinstance(v, (list, str)):
             import json
             if isinstance(v, str):
@@ -51,12 +51,26 @@ class Settings(BaseSettings):
         "postgresql+asyncpg://interviewos:interviewos_secret@localhost:5432/interviewos_db"
     )
 
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def assemble_database_url(cls, v: str) -> str:
+        if not v or not isinstance(v, str):
+            return v
+        cleaned = v.strip()
+        if cleaned.startswith("postgres://"):
+            cleaned = "postgresql+asyncpg://" + cleaned[len("postgres://"):]
+        elif cleaned.startswith("postgresql://") and not cleaned.startswith("postgresql+asyncpg://"):
+            cleaned = "postgresql+asyncpg://" + cleaned[len("postgresql://"):]
+        if "sslmode=require" in cleaned:
+            cleaned = cleaned.replace("sslmode=require", "ssl=require")
+        return cleaned
+
     # Redis
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
     REDIS_URL: str = "redis://localhost:6379/0"
 
-    # Storage (MinIO)
+    # Storage (MinIO / S3)
     MINIO_ENDPOINT: str = "localhost:9000"
     MINIO_ACCESS_KEY: str = "minioadmin"
     MINIO_SECRET_KEY: str = "minioadmin"

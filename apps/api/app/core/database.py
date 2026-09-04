@@ -1,4 +1,18 @@
+"""
+InterviewOS — Production-hardened database engine configuration (Phase 16.2)
+
+Key changes for Neon Serverless PostgreSQL & Vercel serverless compatibility:
+- pool_pre_ping: True      — Validates connections before use (Neon auto-suspend recovery)
+- pool_recycle: 300        — Recycles connections after 5 min to avoid stale serverless connections
+- pool_size: 5             — Reduced from 10 to stay within Neon free-tier connection limits
+- max_overflow: 10         — Reduced from 20 accordingly
+- connect_args ssl: True   — Enables SSL for Neon (required for cloud connections)
+"""
+
+import logging
 from typing import AsyncGenerator
+from urllib.parse import urlparse
+
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -6,17 +20,53 @@ from sqlalchemy.ext.asyncio import (
 )
 from app.core.config import settings
 
-# Create async engine with pooling configurations
+logger = logging.getLogger(__name__)
+
+
+def _build_connect_args(database_url: str) -> dict:
+    """
+    Detect if the connection is to a cloud provider (Neon, AWS, GCP, Azure)
+    and return appropriate SSL connect_args. Local connections skip SSL.
+    """
+    try:
+        parsed = urlparse(database_url)
+        host = parsed.hostname or ""
+        is_cloud = any(
+            provider in host
+            for provider in [
+                "neon.tech",
+                "amazonaws.com",
+                "supabase.com",
+                "cockroachlabs.cloud",
+                "elephantsql.com",
+            ]
+        )
+        if is_cloud:
+            logger.info("[database] Cloud PostgreSQL detected at %s — enabling SSL", host)
+            return {"ssl": True}
+    except Exception:
+        pass
+    return {}
+
+
+_connect_args = _build_connect_args(settings.DATABASE_URL)
+
+# Production-hardened async engine
+# - pool_pre_ping validates connections on reuse (handles Neon auto-suspend)
+# - pool_recycle prevents stale connections surviving serverless cold starts
+# - pool_size / max_overflow tuned for Neon free-tier (max 10 connections)
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=settings.DEBUG,
     future=True,
     pool_pre_ping=True,
-    pool_size=10,
-    max_overflow=20,
+    pool_recycle=300,
+    pool_size=5,
+    max_overflow=10,
+    connect_args=_connect_args,
 )
 
-# Create sessionmaker for async sessions
+# Async session factory
 AsyncSessionLocal = async_sessionmaker(
     bind=engine,
     class_=AsyncSession,
@@ -27,7 +77,7 @@ AsyncSessionLocal = async_sessionmaker(
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    """Dependency for obtaining database sessions in FastAPI route handlers."""
+    """Dependency for obtaining scoped database sessions in FastAPI route handlers."""
     async with AsyncSessionLocal() as session:
         try:
             yield session

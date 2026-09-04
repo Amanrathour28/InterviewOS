@@ -36,7 +36,7 @@ export function Navbar() {
             Solutions
           </Link>
           <a
-            href="http://localhost:8000/api/v1/docs"
+            href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'}/docs`}
             target="_blank"
             rel="noreferrer"
             className="hover:text-white transition-colors flex items-center gap-1"

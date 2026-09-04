@@ -53,6 +53,20 @@ class AISettings(BaseSettings):
         "postgresql+asyncpg://interviewos:interviewos_secret@localhost:5432/interviewos_db"
     )
 
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def assemble_database_url(cls, v: str) -> str:
+        if not v or not isinstance(v, str):
+            return v
+        cleaned = v.strip()
+        if cleaned.startswith("postgres://"):
+            cleaned = "postgresql+asyncpg://" + cleaned[len("postgres://"):]
+        elif cleaned.startswith("postgresql://") and not cleaned.startswith("postgresql+asyncpg://"):
+            cleaned = "postgresql+asyncpg://" + cleaned[len("postgresql://"):]
+        if "sslmode=require" in cleaned:
+            cleaned = cleaned.replace("sslmode=require", "ssl=require")
+        return cleaned
+
     # Redis — for locking, caching, pub/sub
     REDIS_URL: str = "redis://localhost:6379/0"
 
