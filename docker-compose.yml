@@ -1,0 +1,210 @@
+services:
+  # ----------------------------------------------------------------------------
+  # PostgreSQL with pgvector (vector search for resume/JD embeddings)
+  # ----------------------------------------------------------------------------
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: interviewos-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-interviewos}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-interviewos_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-interviewos_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-interviewos} -d ${POSTGRES_DB:-interviewos_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------------------------
+  # Redis (Pub/Sub, state caching, task queue)
+  # ----------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: interviewos-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------------------------
+  # MinIO (S3-compatible file storage for resumes, code snippets, assets)
+  # ----------------------------------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    container_name: interviewos-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  # ----------------------------------------------------------------------------
+  # Mailpit (Local SMTP and email web UI)
+  # ----------------------------------------------------------------------------
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: interviewos-mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025" # SMTP port
+      - "8025:8025" # Web UI port
+
+  # ----------------------------------------------------------------------------
+  # Coturn (STUN/TURN Server for WebRTC NAT traversal)
+  # ----------------------------------------------------------------------------
+  coturn:
+    image: coturn/coturn:latest
+    container_name: interviewos-coturn
+    restart: unless-stopped
+    ports:
+      - "3478:3478/udp"
+      - "3478:3478/tcp"
+      - "5349:5349/udp"
+      - "5349:5349/tcp"
+      - "49152-49160:49152-49160/udp"
+    command:
+      - "-n"
+      - "--log-file=stdout"
+      - "--min-port=49152"
+      - "--max-port=49160"
+      - "--realm=${TURN_REALM:-interviewos.local}"
+      - "--user=${TURN_USERNAME:-interviewos_user}:${TURN_CREDENTIAL:-interviewos_turn_secret}"
+      - "--lt-cred-mech"
+      - "--fingerprint"
+      - "--no-cli"
+
+  # ----------------------------------------------------------------------------
+  # FastAPI Backend Service
+  # ----------------------------------------------------------------------------
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: interviewos-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=development
+      - DEBUG=True
+      - POSTGRES_SERVER=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-interviewos}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-interviewos_secret}
+      - POSTGRES_DB=${POSTGRES_DB:-interviewos_db}
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-interviewos}:${POSTGRES_PASSWORD:-interviewos_secret}@postgres:5432/${POSTGRES_DB:-interviewos_db}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_URL=redis://redis:6379/0
+      - MINIO_ENDPOINT=minio:9000
+      - AI_SERVICE_URL=http://ai:8001/api/v1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/api:/app
+
+  # ----------------------------------------------------------------------------
+  # AI Service & Multi-Agent Intelligence Foundation (Phase 12)
+  # ----------------------------------------------------------------------------
+  ai:
+    build:
+      context: ./apps/ai
+      dockerfile: Dockerfile
+    container_name: interviewos-ai
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      - APP_ENV=development
+      - DEBUG=True
+      - AI_SERVICE_PORT=8001
+      - SECRET_KEY=dev-secret-key-32-chars-interviewos-platform-security
+      - AI_PROVIDER=${AI_PROVIDER:-groq}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
+      - GROQ_FAST_MODEL=${GROQ_FAST_MODEL:-llama-3.1-8b-instant}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2}
+      - AI_FALLBACK_PROVIDER=${AI_FALLBACK_PROVIDER:-ollama}
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-interviewos}:${POSTGRES_PASSWORD:-interviewos_secret}@postgres:5432/${POSTGRES_DB:-interviewos_db}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/ai:/app
+
+  # ----------------------------------------------------------------------------
+  # Realtime Socket.IO Gateway Service
+  # ----------------------------------------------------------------------------
+  realtime:
+    build:
+      context: ./apps/realtime
+      dockerfile: Dockerfile
+    container_name: interviewos-realtime
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      - PORT=4000
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET_KEY=dev-secret-key-32-chars-interviewos-platform-security
+      - API_URL=http://api:8000/api/v1
+      - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+    depends_on:
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+    volumes:
+      - ./apps/realtime:/app
+      - /app/node_modules
+
+  # ----------------------------------------------------------------------------
+  # Next.js Web Frontend Service
+  # ----------------------------------------------------------------------------
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    container_name: interviewos-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+      - NEXT_PUBLIC_WS_URL=ws://localhost:8000/ws
+      - NEXT_PUBLIC_REALTIME_URL=http://localhost:4000
+    depends_on:
+      - api
+      - realtime
+    volumes:
+      - ./apps/web:/app
+      - /app/node_modules
+      - /app/.next
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
