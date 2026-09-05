@@ -12,16 +12,76 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 
+import urllib.parse
+
+
 def sanitize_url(raw_url: str) -> str:
     """Masks password and user details for safe logging."""
     try:
-        parsed = urlparse(raw_url)
+        parsed = urllib.parse.urlparse(raw_url)
         netloc = parsed.hostname or "unknown"
         if parsed.port:
             netloc += f":{parsed.port}"
         return f"{parsed.scheme}://***:***@{netloc}{parsed.path}"
     except Exception:
         return "postgresql+asyncpg://***:***@hidden/db"
+
+
+def normalize_database_url(url: str) -> str:
+    """Normalizes and sanitizes DATABASE_URL for SQLAlchemy + asyncpg."""
+    if not url or not isinstance(url, str):
+        return url
+
+    cleaned = url.strip()
+    if cleaned.startswith("postgres://"):
+        cleaned = "postgresql+asyncpg://" + cleaned[len("postgres://"):]
+    elif cleaned.startswith("postgresql://") and not cleaned.startswith("postgresql+asyncpg://"):
+        cleaned = "postgresql+asyncpg://" + cleaned[len("postgresql://"):]
+
+    try:
+        parsed = urllib.parse.urlparse(cleaned)
+        params = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+        UNSUPPORTED_ASYNC_PARAMS = {
+            "channel_binding",
+            "gssencmode",
+            "sslrootcert",
+            "sslcert",
+            "sslkey",
+            "sslpassword",
+        }
+        new_params = []
+        has_ssl = False
+        for k, val in params:
+            if k.lower() in UNSUPPORTED_ASYNC_PARAMS:
+                continue
+            if k.lower() == "sslmode":
+                if val.lower() != "disable":
+                    new_params.append(("ssl", "require"))
+                    has_ssl = True
+                continue
+            if k.lower() == "ssl":
+                has_ssl = True
+                new_params.append((k, val))
+                continue
+            new_params.append((k, val))
+
+        host = parsed.hostname or ""
+        cloud_hosts = [
+            "neon.tech",
+            "amazonaws.com",
+            "supabase.com",
+            "cockroachlabs.cloud",
+            "elephantsql.com",
+        ]
+        if any(c in host for c in cloud_hosts) and not has_ssl:
+            new_params.append(("ssl", "require"))
+
+        new_query = urllib.parse.urlencode(new_params)
+        return urllib.parse.urlunparse(parsed._replace(query=new_query))
+    except Exception:
+        if "sslmode=require" in cleaned:
+            cleaned = cleaned.replace("sslmode=require", "ssl=require")
+        return cleaned
 
 
 async def verify_database(database_url: str = None) -> bool:
@@ -37,23 +97,20 @@ async def verify_database(database_url: str = None) -> bool:
         except Exception:
             database_url = "postgresql+asyncpg://interviewos:interviewos_secret@localhost:5432/interviewos_db"
 
-    # Normalize url scheme
-    if database_url.startswith("postgres://"):
-        database_url = "postgresql+asyncpg://" + database_url[len("postgres://"):]
-    elif database_url.startswith("postgresql://") and not database_url.startswith("postgresql+asyncpg://"):
-        database_url = "postgresql+asyncpg://" + database_url[len("postgresql://"):]
-
-    if "sslmode=require" in database_url:
-        database_url = database_url.replace("sslmode=require", "ssl=require")
-
+    database_url = normalize_database_url(database_url)
     masked_url = sanitize_url(database_url)
     print(f"\n[InterviewOS] Starting Database Verification against: {masked_url}")
+
+    connect_args = {}
+    if "pooler" in database_url or any(c in database_url for c in ["neon.tech", "amazonaws.com", "supabase.com"]):
+        connect_args["statement_cache_size"] = 0
 
     engine = create_async_engine(
         database_url,
         echo=False,
         future=True,
         pool_pre_ping=True,
+        connect_args=connect_args,
     )
 
     try:
@@ -93,7 +150,7 @@ async def verify_database(database_url: str = None) -> bool:
                 "interviews",
                 "interview_sessions",
                 "interview_events",
-                "evaluation_reports",
+                "evaluations",
             ]
             
             missing_tables = []

@@ -4,6 +4,7 @@ Mirrors the InterviewOS API config pattern (pydantic_settings.BaseSettings).
 All secrets come from environment variables — never hardcoded.
 """
 
+import urllib.parse
 from typing import List, Optional
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -63,9 +64,51 @@ class AISettings(BaseSettings):
             cleaned = "postgresql+asyncpg://" + cleaned[len("postgres://"):]
         elif cleaned.startswith("postgresql://") and not cleaned.startswith("postgresql+asyncpg://"):
             cleaned = "postgresql+asyncpg://" + cleaned[len("postgresql://"):]
-        if "sslmode=require" in cleaned:
-            cleaned = cleaned.replace("sslmode=require", "ssl=require")
-        return cleaned
+
+        try:
+            parsed = urllib.parse.urlparse(cleaned)
+            params = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+            UNSUPPORTED_ASYNC_PARAMS = {
+                "channel_binding",
+                "gssencmode",
+                "sslrootcert",
+                "sslcert",
+                "sslkey",
+                "sslpassword",
+            }
+            new_params = []
+            has_ssl = False
+            for k, val in params:
+                if k.lower() in UNSUPPORTED_ASYNC_PARAMS:
+                    continue
+                if k.lower() == "sslmode":
+                    if val.lower() != "disable":
+                        new_params.append(("ssl", "require"))
+                        has_ssl = True
+                    continue
+                if k.lower() == "ssl":
+                    has_ssl = True
+                    new_params.append((k, val))
+                    continue
+                new_params.append((k, val))
+
+            host = parsed.hostname or ""
+            cloud_hosts = [
+                "neon.tech",
+                "amazonaws.com",
+                "supabase.com",
+                "cockroachlabs.cloud",
+                "elephantsql.com",
+            ]
+            if any(c in host for c in cloud_hosts) and not has_ssl:
+                new_params.append(("ssl", "require"))
+
+            new_query = urllib.parse.urlencode(new_params)
+            return urllib.parse.urlunparse(parsed._replace(query=new_query))
+        except Exception:
+            if "sslmode=require" in cleaned:
+                cleaned = cleaned.replace("sslmode=require", "ssl=require")
+            return cleaned
 
     # Redis — for locking, caching, pub/sub
     REDIS_URL: str = "redis://localhost:6379/0"

@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 def _build_connect_args(database_url: str) -> dict:
     """
     Detect if the connection is to a cloud provider (Neon, AWS, GCP, Azure)
-    and return appropriate SSL connect_args. Local connections skip SSL.
+    and return appropriate SSL & pooler connect_args. Local connections skip SSL.
     """
     try:
         parsed = urlparse(database_url)
@@ -41,9 +41,14 @@ def _build_connect_args(database_url: str) -> dict:
                 "elephantsql.com",
             ]
         )
+        connect_args = {}
         if is_cloud:
             logger.info("[database] Cloud PostgreSQL detected at %s — enabling SSL", host)
-            return {"ssl": True}
+            connect_args["ssl"] = True
+        if "pooler" in host or is_cloud:
+            # Disable prepared statement caching for PgBouncer / Neon connection pooler compatibility
+            connect_args["statement_cache_size"] = 0
+        return connect_args
     except Exception:
         pass
     return {}
