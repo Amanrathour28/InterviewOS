@@ -41,8 +41,13 @@ class StorageService:
             if settings.MINIO_USE_SSL
             else f"http://{settings.MINIO_ENDPOINT}"
         )
-        self.fallback_dir = Path("./storage_scratch")
-        self.fallback_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            self.fallback_dir = Path("./storage_scratch")
+            self.fallback_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            # Fallback to writable /tmp directory in serverless/container environments
+            self.fallback_dir = Path("/tmp/storage_scratch")
+            self.fallback_dir.mkdir(parents=True, exist_ok=True)
         self._s3_client = None
         self._checked_s3 = False
         self._s3_available = False

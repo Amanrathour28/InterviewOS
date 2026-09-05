@@ -10,6 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from app import __version__
 from app.core.config import settings
 from app.api.v1.router import api_router
+from app.api.v1.endpoints.health import router as health_router
 
 # Configure logging
 logging.basicConfig(
@@ -75,6 +76,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 
 # Mount API Routers
+app.include_router(health_router, tags=["System Health"])
+app.include_router(health_router, prefix="/api", tags=["System Health"])
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
 
