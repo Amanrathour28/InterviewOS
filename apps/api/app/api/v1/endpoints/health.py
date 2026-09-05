@@ -31,7 +31,7 @@ async def check_health(db: AsyncSession = Depends(get_db)):
         latency = round((time.perf_counter() - t0) * 1000, 2)
         services["database"] = ServiceStatus(status="healthy", latency_ms=latency)
     except Exception as exc:
-        overall_status = "degraded"
+        overall_status = "unhealthy"
         services["database"] = ServiceStatus(
             status="unavailable",
             detail=f"Database connection error: {str(exc)}",
@@ -46,7 +46,8 @@ async def check_health(db: AsyncSession = Depends(get_db)):
         latency = round((time.perf_counter() - t0) * 1000, 2)
         services["redis"] = ServiceStatus(status="healthy", latency_ms=latency)
     except Exception as exc:
-        overall_status = "degraded"
+        if overall_status == "healthy":
+            overall_status = "degraded"
         services["redis"] = ServiceStatus(
             status="unavailable",
             detail=f"Redis connection error: {str(exc)}",
@@ -61,5 +62,5 @@ async def check_health(db: AsyncSession = Depends(get_db)):
         services=services,
     )
 
-    http_status = status.HTTP_200_OK if overall_status == "healthy" else status.HTTP_503_SERVICE_UNAVAILABLE
+    http_status = status.HTTP_200_OK if overall_status in ("healthy", "degraded") else status.HTTP_503_SERVICE_UNAVAILABLE
     return JSONResponse(status_code=http_status, content=response_payload.model_dump(mode="json"))
