@@ -209,7 +209,7 @@ export default function InterviewRoomPage() {
 
     // Initialize RealtimeClient
     const realtimeClient = new RealtimeClient({
-      url: joinData.realtime_url || 'http://localhost:4000',
+      url: joinData.realtime_url || process.env.NEXT_PUBLIC_REALTIME_URL || 'http://localhost:4000',
       token: joinData.token,
       onConnectionChange: (state: ConnectionState) => {
         setConnectionState(state);

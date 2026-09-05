@@ -8,9 +8,9 @@ InterviewOS uses **Neon Serverless PostgreSQL (PostgreSQL 16)** as its productio
 ## 2. Setting Up Neon PostgreSQL
 
 ### Step 1: Provision Neon Database
-1. Register at [https://neon.tech](https://neon.tech).
+1. Register/Login at [https://neon.tech](https://neon.tech).
 2. Create a project named `interviewos-db`.
-3. Choose the AWS region closest to your Vercel deployment (e.g., `us-east-2` for Vercel `cle1/iad1`).
+3. Choose the AWS region closest to your Vercel deployment (e.g., `us-east-2` for Vercel `iad1/cle1`).
 
 ### Step 2: Enable pgvector Extension
 Open the Neon SQL Editor and execute:
@@ -23,9 +23,10 @@ Verify the extension:
 SELECT extname, extversion FROM pg_extension WHERE extname = 'vector';
 ```
 
-### Step 3: Configure Connection Pooling
-In the Neon Console, choose the **Connection string** dropdown and select **Pooled connection**.
-The connection string format:
+### Step 3: Obtain Connection String (Pooled)
+In the Neon Console:
+1. In the **Connection Details** card, ensure **Pooled connection** checkbox is checked (uses port `5432` with PgBouncer).
+2. Copy the connection string. It will look like:
 ```text
 postgresql://[user]:[password]@[ep-xyz-pooler].[region].aws.neon.tech/neondb?sslmode=require
 ```
@@ -34,7 +35,7 @@ postgresql://[user]:[password]@[ep-xyz-pooler].[region].aws.neon.tech/neondb?ssl
 
 ## 3. Database Migration Procedure (001 → 016)
 
-The migration chain is continuous and preserved across all 16 platform phases:
+The migration chain is continuous and preserved across all platform phases:
 
 | Version | Migration Name | Key Tables Created |
 | :--- | :--- | :--- |
@@ -55,20 +56,49 @@ The migration chain is continuous and preserved across all 16 platform phases:
 | `015` | `015_phase_15_1_evaluation_integrity` | `evaluation_audit_trail`, `tamper_detection_hashes` |
 | `016` | `016_phase_16_analytics_indexes` | High-performance composite indexes for real-time analytics aggregation |
 
-### Running Migrations:
-```bash
+### Executing Migrations Against Neon
+
+Set your Neon connection string in your environment and run the migration script:
+
+#### Windows (PowerShell):
+```powershell
+$env:DATABASE_URL="postgresql+asyncpg://[user]:[password]@[ep-xyz-pooler].[region].aws.neon.tech/neondb?ssl=require"
 python scripts/migrate_database.py
 ```
 
-### Verifying Migrations:
+#### Linux / macOS (Bash):
+```bash
+export DATABASE_URL="postgresql+asyncpg://[user]:[password]@[ep-xyz-pooler].[region].aws.neon.tech/neondb?ssl=require"
+python scripts/migrate_database.py
+```
+
+Expected result:
+```text
+[InterviewOS] Starting Production Alembic Migrations...
+  [PASS] Alembic migrations applied successfully.
+```
+
+### Verifying Database Integrity & pgvector
+
+Run the verification script:
 ```bash
 python scripts/verify_db_connection.py
+```
+
+Expected output:
+```text
+[InterviewOS] Starting Database Verification against: postgresql+asyncpg://***:***@ep-xyz-pooler.us-east-2.aws.neon.tech/neondb?ssl=require
+  [PASS] Connection established. PostgreSQL Version: PostgreSQL 16.x ...
+  [PASS] pgvector extension verified (version: 0.7.x)
+  [PASS] Alembic migration head verified: 016
+  [PASS] All 8 critical platform tables exist and verified.
+[InterviewOS] Database verification completed successfully.
 ```
 
 ---
 
 ## 4. Connection Resilience & Serverless Adaptation
 - **Async Driver**: Utilizes `asyncpg` with automatic `postgresql+asyncpg://` scheme normalization.
-- **Pre-pinging**: `pool_pre_ping=True` prevents executing queries against stale or suspended Neon connections.
+- **Pre-pinging**: `pool_pre_ping=True` prevents executing queries against stale or auto-suspended Neon connections.
 - **Connection Recycling**: `pool_recycle=300` automatically recycles connections every 5 minutes.
 - **SSL Support**: Secure SSL connection enforced across all cloud transactions (`ssl=require`).

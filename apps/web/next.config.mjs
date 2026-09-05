@@ -7,8 +7,16 @@ const nextConfig = {
   images: {
     remotePatterns: [],
   },
-  env: {
-    // Runtime-accessible (but not NEXT_PUBLIC_) server-side env vars go here if needed
+  async rewrites() {
+    if (process.env.NODE_ENV === 'development' && !process.env.NEXT_PUBLIC_API_URL) {
+      return [
+        {
+          source: '/api/v1/:path*',
+          destination: 'http://127.0.0.1:8000/api/v1/:path*',
+        },
+      ];
+    }
+    return [];
   },
 };
 

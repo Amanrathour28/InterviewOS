@@ -100,5 +100,14 @@ class Settings(BaseSettings):
     TURN_USERNAME: str = ""
     TURN_CREDENTIAL: str = ""
 
+    # Email / SMTP
+    SMTP_HOST: str = "localhost"
+    SMTP_PORT: int = 1025
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_TLS: bool = True
+    EMAIL_FROM: str = "notifications@interviewos.com"
+    EMAIL_FROM_NAME: str = "InterviewOS"
+
 
 settings = Settings()

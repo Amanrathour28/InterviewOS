@@ -5,5 +5,16 @@
   "outputDirectory": "apps/web/.next",
   "installCommand": "cd apps/web && npm install",
   "cleanUrls": true,
-  "trailingSlash": false
+  "trailingSlash": false,
+  "functions": {
+    "api/index.py": {
+      "includeFiles": "apps/api/**"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.py"
+    }
+  ]
 }
