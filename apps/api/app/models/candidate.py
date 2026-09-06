@@ -98,6 +98,10 @@ class Candidate(Base, UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     )
     notes_summary = Column(Text, nullable=True)
 
+    # Guest candidate flag — set True for instant-interview placeholder candidates.
+    # These records are created automatically when an interviewer starts an Instant Interview.
+    is_guest = Column(Boolean, nullable=False, default=False)
+
     # Relationships
     workspace = relationship("Workspace", back_populates="candidates")
     creator = relationship("User")

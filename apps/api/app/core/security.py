@@ -85,3 +85,60 @@ def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
         return decoded
     except jwt.PyJWTError:
         return None
+
+
+def create_candidate_session_token(
+    invitation_id: str,
+    interview_id: str,
+    candidate_name: str,
+) -> str:
+    """Create a short-lived, interview-scoped candidate session JWT.
+
+    This token has type='candidate_session' so it is REJECTED by decode_access_token
+    (which only accepts type='access').  Candidate endpoints use
+    decode_candidate_session_token instead.
+
+    Expiry: 4 hours — sufficient for a single interview session.
+    """
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(hours=4)
+
+    payload: Dict[str, Any] = {
+        "sub": f"candidate-session:{invitation_id}",
+        "type": "candidate_session",
+        "scope": "candidate",
+        "invitation_id": invitation_id,
+        "interview_id": interview_id,
+        "candidate_name": candidate_name,
+        "iat": now,
+        "exp": expire,
+        "jti": secrets.token_hex(8),
+    }
+
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=JWT_ALGORITHM)
+
+
+def decode_candidate_session_token(token: str) -> Optional[Dict[str, Any]]:
+    """Decode and validate a candidate session token.
+
+    Validates:
+    - JWT signature
+    - expiration
+    - type == 'candidate_session'
+    - scope == 'candidate'
+    """
+    try:
+        decoded = jwt.decode(
+            token,
+            settings.SECRET_KEY,
+            algorithms=[JWT_ALGORITHM],
+            options={"verify_exp": True},
+        )
+        if decoded.get("type") != "candidate_session":
+            return None
+        if decoded.get("scope") != "candidate":
+            return None
+        return decoded
+    except jwt.PyJWTError:
+        return None
+

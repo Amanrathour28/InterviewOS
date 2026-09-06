@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "dev-secret-key-32-chars-interviewos-platform-security"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    # Frontend URL — used to build shareable join links.  Set NEXT_PUBLIC_APP_URL on Vercel.
+    APP_URL: str = "http://localhost:3000"
 
     # CORS
     BACKEND_CORS_ORIGINS: List[str] = [

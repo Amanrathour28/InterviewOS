@@ -13,16 +13,19 @@ import {
   Building2,
   Sparkles,
   Layers,
+  Zap,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/auth/auth-store';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { apiClient } from '@/lib/api';
+import { InstantInterviewModal } from '@/components/instant-interview/instant-interview-modal';
 
 export default function DashboardPage() {
   const { user, activeOrg, activeWorkspace, fetchOrganizations } = useAuthStore();
   const [showWorkspaceModal, setShowWorkspaceModal] = useState(false);
+  const [showInstantModal, setShowInstantModal] = useState(false);
   const [workspaceName, setWorkspaceName] = useState('');
   const [isCreatingWs, setIsCreatingWs] = useState(false);
   const [wsError, setWsError] = useState<string | null>(null);
@@ -71,6 +74,17 @@ export default function DashboardPage() {
 
         {/* Quick Action */}
         <div className="flex items-center gap-3">
+          {/* ⚡ Start Instant Interview — primary action */}
+          <Button
+            id="start-instant-interview-btn"
+            size="sm"
+            onClick={() => setShowInstantModal(true)}
+            className="text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20 flex items-center gap-1.5 px-4 py-2 h-9"
+          >
+            <Zap className="h-3.5 w-3.5" />
+            Start Instant Interview
+          </Button>
+
           {activeOrg && (
             <Button
               size="sm"
@@ -323,6 +337,12 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+      {/* Instant Interview Modal */}
+      <InstantInterviewModal
+        isOpen={showInstantModal}
+        onClose={() => setShowInstantModal(false)}
+      />
     </div>
   );
 }

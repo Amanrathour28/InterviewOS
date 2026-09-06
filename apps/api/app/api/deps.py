@@ -1,12 +1,12 @@
 import uuid
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import decode_access_token
+from app.core.security import decode_access_token, decode_candidate_session_token
 from app.models.user import User, UserRole
 from app.models.organization import Organization, OrganizationMembership, OrgMemberRole
 from app.models.workspace import Workspace, WorkspaceMembership, WorkspaceMemberRole
@@ -314,4 +314,46 @@ async def verify_template_access(
     if template.workspace_id is not None:
         await verify_workspace_access(template.workspace_id, current_user, db)
     return template
+
+
+async def get_candidate_session(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+) -> Dict[str, Any]:
+    """Extract and validate a candidate session JWT.
+
+    Returns the decoded claims dict containing:
+        scope, invitation_id, interview_id, candidate_name, sub, exp
+
+    This dependency CANNOT satisfy get_current_user — candidate tokens have
+    type='candidate_session' which is rejected by decode_access_token.
+    """
+    token = None
+    if credentials:
+        token = credentials.credentials
+    else:
+        token = request.cookies.get("candidate_session")
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Candidate session credentials not provided",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    payload = decode_candidate_session_token(token)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired candidate session",
+        )
+
+    if payload.get("scope") != "candidate":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: insufficient scope",
+        )
+
+    return payload
+
 

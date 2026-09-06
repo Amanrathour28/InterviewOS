@@ -9,6 +9,7 @@ from app.api.v1.endpoints import (
     health,
     interview_templates,
     interviews,
+    instant_interview,
     invitations,
     jobs,
     notifications,
@@ -36,6 +37,9 @@ api_router.include_router(jobs.router, prefix="/jobs", tags=["Jobs"])
 api_router.include_router(candidates.router, prefix="/candidates", tags=["Candidates"])
 api_router.include_router(questions.router, prefix="/questions", tags=["Question Bank"])
 api_router.include_router(interview_templates.router, prefix="/interview-templates", tags=["Interview Templates"])
+# instant_interview must be registered BEFORE the generic /interviews prefix
+# to avoid route shadowing (e.g. /interviews/instant vs /interviews/{id})
+api_router.include_router(instant_interview.router, tags=["Instant Interview & Candidate Join"])
 api_router.include_router(interviews.router, prefix="/interviews", tags=["Interviews"])
 api_router.include_router(scheduling.router, prefix="/interviews", tags=["Interview Scheduling"])
 api_router.include_router(availability.router, prefix="/availability", tags=["Availability"])
@@ -52,3 +56,4 @@ api_router.include_router(intelligence.router, prefix="/intelligence", tags=["In
 api_router.include_router(adaptive_interview.router, tags=["Adaptive Interviewer"])
 api_router.include_router(evaluation.router, tags=["Interview Evaluation"])
 api_router.include_router(analytics.router, tags=["Analytics & Decision Intelligence"])
+

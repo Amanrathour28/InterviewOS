@@ -225,6 +225,14 @@ class InterviewInvitation(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     accepted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     declined_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Candidate identity fields — populated when the guest enters their details.
+    # Raw candidate session token is NEVER stored; only its SHA-256 hash is persisted.
+    candidate_session_token_hash: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True, unique=True, index=True
+    )
+    candidate_name: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    candidate_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
     # Relationships
     interview = relationship("Interview", back_populates="invitations")
     workspace = relationship("Workspace")
