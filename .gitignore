@@ -71,3 +71,4 @@ Thumbs.db
 storage_scratch/
 *.tsbuildinfo
 .turbo/
+.vercel

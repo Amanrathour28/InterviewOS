@@ -8,7 +8,7 @@ const nextConfig = {
     remotePatterns: [],
   },
   async rewrites() {
-    if (process.env.NODE_ENV === 'development' && !process.env.NEXT_PUBLIC_API_URL) {
+    if (process.env.NODE_ENV === 'development') {
       return [
         {
           source: '/api/v1/:path*',
@@ -16,7 +16,12 @@ const nextConfig = {
         },
       ];
     }
-    return [];
+    return [
+      {
+        source: '/api/v1/:path*',
+        destination: '/api',
+      },
+    ];
   },
 };
 

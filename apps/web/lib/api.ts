@@ -71,11 +71,24 @@ export async function apiClient<T>(
     try {
       errorData = await response.json();
     } catch {
-      errorData = { detail: response.statusText };
+      const fallbackDetail =
+        response.statusText ||
+        (response.status === 404
+          ? 'API endpoint not found (HTTP 404)'
+          : response.status === 502
+          ? 'API server unavailable (HTTP 502)'
+          : response.status === 503
+          ? 'API service temporarily unavailable (HTTP 503)'
+          : response.status === 504
+          ? 'API gateway timeout (HTTP 504)'
+          : `API request failed (HTTP ${response.status})`);
+      errorData = { detail: fallbackDetail };
     }
 
     const message =
-      errorData?.detail || errorData?.message || 'An unexpected error occurred';
+      errorData?.detail ||
+      errorData?.message ||
+      (response.status ? `API request failed (HTTP ${response.status})` : 'An unexpected error occurred');
 
     // Automatic token refresh handling on 401 if refresh token is available
     if (response.status === 401 && !endpoint.includes('/auth/login') && !endpoint.includes('/auth/refresh')) {
