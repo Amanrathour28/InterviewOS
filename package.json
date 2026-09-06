@@ -1,0 +1,11 @@
+{
+  "name": "interviewos",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/web"
+  ],
+  "dependencies": {
+    "next": "^14.2.4"
+  }
+}
