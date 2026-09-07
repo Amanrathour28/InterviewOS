@@ -45,7 +45,7 @@ export class PeerConnectionManager {
     this.config = config;
   }
 
-  setCallbacks(callbacks: {
+  setCallbacks(callbacks: Partial<{
     onSendSignal: (msg: SignalingMessage) => void;
     onRemoteStreamAdded: (userId: string, stream: MediaStream) => void;
     onPeerConnectionChanged: (
@@ -55,12 +55,12 @@ export class PeerConnectionManager {
     ) => void;
     onActiveSpeakerChanged: (userId: string, level: number, isActive: boolean) => void;
     onDiagnosticsUpdated: (userId: string, diagnostics: NetworkDiagnostics) => void;
-  }) {
-    this.onSendSignal = callbacks.onSendSignal;
-    this.onRemoteStreamAdded = callbacks.onRemoteStreamAdded;
-    this.onPeerConnectionChanged = callbacks.onPeerConnectionChanged;
-    this.onActiveSpeakerChanged = callbacks.onActiveSpeakerChanged;
-    this.onDiagnosticsUpdated = callbacks.onDiagnosticsUpdated;
+  }>) {
+    if (callbacks.onSendSignal !== undefined) this.onSendSignal = callbacks.onSendSignal;
+    if (callbacks.onRemoteStreamAdded !== undefined) this.onRemoteStreamAdded = callbacks.onRemoteStreamAdded;
+    if (callbacks.onPeerConnectionChanged !== undefined) this.onPeerConnectionChanged = callbacks.onPeerConnectionChanged;
+    if (callbacks.onActiveSpeakerChanged !== undefined) this.onActiveSpeakerChanged = callbacks.onActiveSpeakerChanged;
+    if (callbacks.onDiagnosticsUpdated !== undefined) this.onDiagnosticsUpdated = callbacks.onDiagnosticsUpdated;
   }
 
   setLocalStream(stream: MediaStream | null) {

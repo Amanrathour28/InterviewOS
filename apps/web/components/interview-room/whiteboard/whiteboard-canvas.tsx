@@ -88,13 +88,10 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
           const diff = (change as any)?.changes || change;
 
           if (realtimeClient) {
-            const socket = realtimeClient.getSocket();
-            if (socket) {
-              socket.emit('whiteboard_patch', {
-                changes: diff,
-                isLocked,
-              });
-            }
+            realtimeClient.emit('whiteboard_patch', {
+              changes: diff,
+              isLocked,
+            });
           }
 
           // Debounce durable save
@@ -114,9 +111,6 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
   // 3. Setup Real-time WebSocket Listeners
   useEffect(() => {
     if (!realtimeClient) return;
-
-    const socket = realtimeClient.getSocket();
-    if (!socket) return;
 
     const handleWhiteboardPatch = (data: { changes: any; senderUserId: string }) => {
       if (!editorRef.current || !data.changes) return;
@@ -182,18 +176,18 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
       }
     };
 
-    socket.on('whiteboard_patch', handleWhiteboardPatch);
-    socket.on('whiteboard_lock_state', handleLockState);
-    socket.on('whiteboard_clear', handleClear);
-    socket.on('whiteboard_restore', handleRestore);
-    socket.on('whiteboard_cursor', handleCursor);
+    const unsubPatch = realtimeClient.on('whiteboard_patch', handleWhiteboardPatch);
+    const unsubLock = realtimeClient.on('whiteboard_lock_state', handleLockState);
+    const unsubClear = realtimeClient.on('whiteboard_clear', handleClear);
+    const unsubRestore = realtimeClient.on('whiteboard_restore', handleRestore);
+    const unsubCursor = realtimeClient.on('whiteboard_cursor', handleCursor);
 
     return () => {
-      socket.off('whiteboard_patch', handleWhiteboardPatch);
-      socket.off('whiteboard_lock_state', handleLockState);
-      socket.off('whiteboard_clear', handleClear);
-      socket.off('whiteboard_restore', handleRestore);
-      socket.off('whiteboard_cursor', handleCursor);
+      unsubPatch();
+      unsubLock();
+      unsubClear();
+      unsubRestore();
+      unsubCursor();
     };
   }, [realtimeClient, isInterviewer, setIsLocked, updateCursor]);
 

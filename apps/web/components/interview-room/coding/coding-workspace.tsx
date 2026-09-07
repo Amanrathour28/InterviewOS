@@ -113,9 +113,6 @@ export const CodingWorkspace: React.FC<CodingWorkspaceProps> = ({
   useEffect(() => {
     if (!realtimeClient) return;
 
-    const socket = realtimeClient.getSocket();
-    if (!socket) return;
-
     const handleYjsUpdate = (data: { fileId: string; update: string; senderUserId: string }) => {
       if (data.update && typeof data.update === 'string') {
         updateFileContent(data.fileId, data.update);
@@ -149,16 +146,16 @@ export const CodingWorkspace: React.FC<CodingWorkspaceProps> = ({
       }
     };
 
-    socket.on('coding_yjs_update', handleYjsUpdate);
-    socket.on('coding_lock_state', handleLockEvent);
-    socket.on('CODING_PROBLEM_ASSIGNED', handleProblemAssigned);
-    socket.on('CODING_SUBMISSION_CREATED', handleSubmissionCreated);
+    const unsubUpdate = realtimeClient.on('coding_yjs_update', handleYjsUpdate);
+    const unsubLock = realtimeClient.on('coding_lock_state', handleLockEvent);
+    const unsubProblem = realtimeClient.on('CODING_PROBLEM_ASSIGNED', handleProblemAssigned);
+    const unsubSubmission = realtimeClient.on('CODING_SUBMISSION_CREATED', handleSubmissionCreated);
 
     return () => {
-      socket.off('coding_yjs_update', handleYjsUpdate);
-      socket.off('coding_lock_state', handleLockEvent);
-      socket.off('CODING_PROBLEM_ASSIGNED', handleProblemAssigned);
-      socket.off('CODING_SUBMISSION_CREATED', handleSubmissionCreated);
+      unsubUpdate();
+      unsubLock();
+      unsubProblem();
+      unsubSubmission();
     };
   }, [realtimeClient, codingSession, updateFileContent, setIsEditorLocked, setActiveProblem, fetchCodingSession, setSubmissions]);
 
@@ -168,14 +165,11 @@ export const CodingWorkspace: React.FC<CodingWorkspaceProps> = ({
 
     // Emit live update over socket
     if (realtimeClient) {
-      const socket = realtimeClient.getSocket();
-      if (socket) {
-        socket.emit('coding_yjs_update', {
-          fileId,
-          update: content,
-          isLocked: isEditorLocked,
-        });
-      }
+      realtimeClient.emit('coding_yjs_update', {
+        fileId,
+        update: content,
+        isLocked: isEditorLocked,
+      });
     }
   };
 
@@ -189,10 +183,10 @@ export const CodingWorkspace: React.FC<CodingWorkspaceProps> = ({
         body: JSON.stringify({ is_locked: newLocked }),
       });
       setIsEditorLocked(newLocked);
-      realtimeClient?.getSocket()?.emit('dispatch_event', {
-        event_type: newLocked ? 'CODE_EDITOR_LOCKED' : 'CODE_EDITOR_UNLOCKED',
-        payload: { is_locked: newLocked },
-      });
+      realtimeClient?.dispatchEvent(
+        newLocked ? 'CODE_EDITOR_LOCKED' : 'CODE_EDITOR_UNLOCKED',
+        { is_locked: newLocked }
+      );
     } catch (err) {
       console.error('Failed to toggle lock:', err);
     }

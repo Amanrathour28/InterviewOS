@@ -45,7 +45,7 @@ export const PrivateLayerDrawer: React.FC<PrivateLayerDrawerProps> = ({
       setTimeout(() => setSavedSuccess(false), 2500);
 
       // Emit private update strictly over socket interviewer channel
-      realtimeClient?.getSocket()?.emit('whiteboard_private_patch', {
+      realtimeClient?.emit('whiteboard_private_patch', {
         changes: payload,
       });
     } catch (err) {

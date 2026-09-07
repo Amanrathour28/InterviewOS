@@ -132,28 +132,28 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   useEffect(() => {
     if (!realtimeClient) return;
 
-    realtimeClient.onChatTyping((data: any) => {
+    const unsubTyping = realtimeClient.onChatTyping((data: any) => {
       if (data.userId !== currentUserId) {
         setTyping(data.channelId, { userId: data.userId, userName: data.userName }, data.isTyping);
       }
     });
 
-    const socket = realtimeClient.getSocket();
-    if (socket) {
-      const handleInterviewEvent = (event: any) => {
-        if (event?.event_type === 'CHAT_MESSAGE_CREATED') {
-          const channelId = event.payload?.channel_id;
-          const message = event.payload?.message;
-          if (channelId && message) {
-            addMessage(channelId, message);
-          }
+    const handleInterviewEvent = (event: any) => {
+      if (event?.event_type === 'CHAT_MESSAGE_CREATED') {
+        const channelId = event.payload?.channel_id;
+        const message = event.payload?.message;
+        if (channelId && message) {
+          addMessage(channelId, message);
         }
-      };
-      socket.on('interview_event', handleInterviewEvent);
-      return () => {
-        socket.off('interview_event', handleInterviewEvent);
-      };
-    }
+      }
+    };
+
+    const unsubEvent = realtimeClient.on('interview_event', handleInterviewEvent);
+
+    return () => {
+      unsubTyping();
+      unsubEvent();
+    };
   }, [realtimeClient, currentUserId, setTyping, addMessage]);
 
   // 5. Send plain text message

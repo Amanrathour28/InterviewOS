@@ -38,13 +38,68 @@ export function resolveRealtimeUrl(serverUrl?: string): string {
   return '';
 }
 
+export interface RealtimeDiagnostics {
+  realtimeUrl: string;
+  transport: string;
+  connectionState: ConnectionState;
+  socketId: string | null;
+  reconnectAttempts: number;
+  disconnectReason: string | null;
+  lastError: string | null;
+}
+
 export class RealtimeClient {
   private socket: Socket | null = null;
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private options: RealtimeClientOptions;
+  private listeners = new Map<string, Set<Function>>();
+  private connectionState: ConnectionState = 'disconnected';
+  private reconnectAttempts = 0;
+  private disconnectReason: string | null = null;
+  private lastError: string | null = null;
+  private signalingHandler?: (msg: any) => void;
+  private chatTypingHandler?: (data: any) => void;
 
   constructor(options: RealtimeClientOptions) {
     this.options = options;
+  }
+
+  on(event: string, handler: (...args: any[]) => void): () => void {
+    if (!this.listeners.has(event)) {
+      this.listeners.set(event, new Set());
+    }
+    this.listeners.get(event)!.add(handler);
+
+    if (this.socket) {
+      this.socket.on(event, handler as any);
+    }
+
+    return () => this.off(event, handler);
+  }
+
+  off(event: string, handler: (...args: any[]) => void): void {
+    const set = this.listeners.get(event);
+    if (set) {
+      set.delete(handler);
+      if (set.size === 0) {
+        this.listeners.delete(event);
+      }
+    }
+    if (this.socket) {
+      this.socket.off(event, handler as any);
+    }
+  }
+
+  getDiagnostics(): RealtimeDiagnostics {
+    return {
+      realtimeUrl: this.options.url,
+      transport: (this.socket?.io?.engine as any)?.transport?.name || 'none',
+      connectionState: this.connectionState,
+      socketId: this.socket?.id || null,
+      reconnectAttempts: this.reconnectAttempts,
+      disconnectReason: this.disconnectReason,
+      lastError: this.lastError,
+    };
   }
 
   connect(): void {
@@ -63,10 +118,12 @@ export class RealtimeClient {
       console.warn(
         '[RealtimeClient] Realtime gateway is not configured for production or points to localhost. Connection aborted.'
       );
+      this.connectionState = 'disconnected';
       this.options.onConnectionChange?.('disconnected');
       return;
     }
 
+    this.connectionState = 'connecting';
     this.options.onConnectionChange?.('connecting');
 
     this.socket = io(this.options.url, {
@@ -79,29 +136,44 @@ export class RealtimeClient {
       timeout: 10000,
     });
 
+    // Re-bind all dynamically registered listeners
+    this.listeners.forEach((handlers, event) => {
+      handlers.forEach((h) => this.socket?.on(event, h as any));
+    });
+
     this.socket.on('connect', () => {
+      this.connectionState = 'connected';
+      this.reconnectAttempts = 0;
+      this.disconnectReason = null;
+      this.lastError = null;
       this.options.onConnectionChange?.('connected');
       this.startHeartbeat();
     });
 
     this.socket.on('disconnect', (reason) => {
       this.stopHeartbeat();
+      this.disconnectReason = reason;
       if (reason === 'io server disconnect') {
+        this.connectionState = 'disconnected';
         this.options.onConnectionChange?.('disconnected');
       } else {
+        this.connectionState = 'reconnecting';
         this.options.onConnectionChange?.('reconnecting');
       }
     });
 
     this.socket.on('connect_error', (err) => {
       console.warn('[RealtimeClient] Connect error:', err.message);
+      this.lastError = err.message;
+      this.reconnectAttempts += 1;
+      this.connectionState = 'reconnecting';
       this.options.onConnectionChange?.('reconnecting');
       this.options.onError?.(err);
     });
 
-    // Handle max reconnection attempts reached
     this.socket.io.on('reconnect_failed', () => {
       console.warn('[RealtimeClient] Reconnection attempts failed, marking disconnected');
+      this.connectionState = 'disconnected';
       this.options.onConnectionChange?.('disconnected');
     });
 
@@ -122,11 +194,10 @@ export class RealtimeClient {
     });
 
     this.socket.on('error', (err) => {
+      this.lastError = typeof err === 'string' ? err : err?.message || 'Unknown error';
       this.options.onError?.(err);
     });
   }
-
-  private signalingHandler?: (msg: any) => void;
 
   onSignaling(handler: (msg: any) => void): void {
     this.signalingHandler = handler;
@@ -146,10 +217,13 @@ export class RealtimeClient {
     this.socket.emit('media_state_change', data);
   }
 
-  private chatTypingHandler?: (data: any) => void;
-
-  onChatTyping(handler: (data: any) => void): void {
+  onChatTyping(handler: (data: any) => void): () => void {
     this.chatTypingHandler = handler;
+    return () => {
+      if (this.chatTypingHandler === handler) {
+        this.chatTypingHandler = undefined;
+      }
+    };
   }
 
   sendTyping(channelId: string, channelType: string, isTyping: boolean): void {
@@ -182,6 +256,8 @@ export class RealtimeClient {
   emit(event: string, data?: any): void {
     if (this.socket && this.socket.connected) {
       this.socket.emit(event, data);
+    } else {
+      console.warn(`[RealtimeClient] Cannot emit event "${event}": socket not connected`);
     }
   }
 
@@ -217,6 +293,7 @@ export class RealtimeClient {
       this.socket.disconnect();
       this.socket = null;
     }
+    this.connectionState = 'disconnected';
     this.options.onConnectionChange?.('disconnected');
   }
 }

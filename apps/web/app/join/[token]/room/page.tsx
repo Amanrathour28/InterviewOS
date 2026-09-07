@@ -354,6 +354,12 @@ export default function CandidateRoomPage() {
           onDiagnosticsUpdated: () => {},
         });
 
+        // Connect Candidate Realtime Socket
+        realtimeClient.connect();
+
+        // Broadcast candidate ready status to interviewer
+        realtimeClient.emit('candidate_ready', { candidate_name: candDisplayName });
+
         // Trigger component re-render so child workspaces get realtimeClientRef.current
         setRerender((v) => v + 1);
       } catch (err: any) {

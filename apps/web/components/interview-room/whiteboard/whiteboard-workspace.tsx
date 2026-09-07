@@ -112,7 +112,7 @@ export const WhiteboardWorkspace: React.FC<WhiteboardWorkspaceProps> = ({
       });
       setIsLocked(newLocked);
 
-      realtimeClient?.getSocket()?.emit('whiteboard_lock_state', {
+      realtimeClient?.emit('whiteboard_lock_state', {
         is_locked: newLocked,
       });
     } catch (err) {
@@ -137,7 +137,7 @@ export const WhiteboardWorkspace: React.FC<WhiteboardWorkspaceProps> = ({
         }
       }
 
-      realtimeClient?.getSocket()?.emit('whiteboard_clear');
+      realtimeClient?.emit('whiteboard_clear');
     } catch (err) {
       console.error('Failed to clear whiteboard:', err);
     }

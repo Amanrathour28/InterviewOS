@@ -87,7 +87,7 @@ export const WhiteboardSnapshotsDrawer: React.FC<WhiteboardSnapshotsDrawerProps>
       onSnapshotRestored(restored.document);
 
       // Broadcast restore over realtime socket
-      realtimeClient?.getSocket()?.emit('whiteboard_restore', {
+      realtimeClient?.emit('whiteboard_restore', {
         snapshot_id: snapId,
         document: restored.document,
       });

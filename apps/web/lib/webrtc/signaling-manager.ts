@@ -17,10 +17,6 @@ export class SignalingManager {
       onSendSignal: (msg: SignalingMessage) => {
         this.realtimeClient.sendSignaling(msg);
       },
-      onRemoteStreamAdded: () => {},
-      onPeerConnectionChanged: () => {},
-      onActiveSpeakerChanged: () => {},
-      onDiagnosticsUpdated: () => {},
     });
 
     // 2. Listen for incoming WebRTC signals from gateway
