@@ -62,6 +62,18 @@ async def revision_applied(conn, revision: str) -> bool:
 async def apply():
     raw_url = os.environ.get("DATABASE_URL", "")
     if not raw_url:
+        try:
+            import dotenv
+            root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+            for env_name in [".env", ".env.local", ".vercel/.env.production.local"]:
+                env_path = os.path.join(root_dir, env_name)
+                if os.path.exists(env_path):
+                    dotenv.load_dotenv(env_path)
+            raw_url = os.environ.get("DATABASE_URL", "")
+        except Exception:
+            pass
+
+    if not raw_url:
         from app.core.config import settings
         raw_url = settings.DATABASE_URL
 
@@ -155,33 +167,40 @@ async def apply():
         # ------------------------------------------------------------------
         # 7. Stamp alembic_version
         # ------------------------------------------------------------------
-        if not await revision_applied(conn, REVISION):
-            # Update previous revision to this one
-            prev_revision = "016_phase_16_analytics_indexes"
-            existing = await conn.execute(
-                text("SELECT version_num FROM alembic_version")
-            )
-            rows = existing.fetchall()
-            if rows:
-                # Update the most recent revision to this one
-                await conn.execute(
-                    text("UPDATE alembic_version SET version_num = :v WHERE version_num = :p"),
-                    {"v": REVISION, "p": prev_revision},
-                )
-                if conn.rowcount == 0:  # type: ignore[attr-defined]
-                    # Prev revision not found, just insert
-                    await conn.execute(
-                        text("INSERT INTO alembic_version (version_num) VALUES (:v)"),
-                        {"v": REVISION},
-                    )
-            else:
-                await conn.execute(
-                    text("INSERT INTO alembic_version (version_num) VALUES (:v)"),
-                    {"v": REVISION},
-                )
-            print(f"[OK] Stamped alembic_version with {REVISION}")
-        else:
+        existing = await conn.execute(
+            text("SELECT version_num FROM alembic_version")
+        )
+        current_versions = [r[0] for r in existing.fetchall()]
+        print(f"Current alembic_version: {current_versions}")
+
+        if REVISION in current_versions:
             print(f"[SKIP] {REVISION} already in alembic_version")
+        elif not current_versions:
+            await conn.execute(
+                text("INSERT INTO alembic_version (version_num) VALUES (:v)"),
+                {"v": REVISION},
+            )
+            print(f"[OK] Stamped alembic_version with {REVISION} (inserted)")
+        else:
+            prev_revision = "016_phase_16_analytics_indexes"
+            result = await conn.execute(
+                text("UPDATE alembic_version SET version_num = :v WHERE version_num = :p"),
+                {"v": REVISION, "p": prev_revision},
+            )
+            if result.rowcount == 0:
+                old_ver = current_versions[0]
+                await conn.execute(
+                    text("UPDATE alembic_version SET version_num = :v WHERE version_num = :old"),
+                    {"v": REVISION, "old": old_ver},
+                )
+                print(f"[OK] Stamped alembic_version with {REVISION} (updated from {old_ver})")
+            else:
+                print(f"[OK] Stamped alembic_version with {REVISION} (updated from {prev_revision})")
+
+        # Verify post-stamp alembic version
+        check = await conn.execute(text("SELECT version_num FROM alembic_version"))
+        final_versions = [r[0] for r in check.fetchall()]
+        print(f"Verified alembic_version: {final_versions}")
 
         print("=== Migration 017 applied successfully ===")
 
