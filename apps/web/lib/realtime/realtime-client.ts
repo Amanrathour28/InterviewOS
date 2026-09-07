@@ -11,6 +11,33 @@ export interface RealtimeClientOptions {
   onError?: (err: any) => void;
 }
 
+export function resolveRealtimeUrl(serverUrl?: string): string {
+  // 1. Explicit env variable overrides
+  if (process.env.NEXT_PUBLIC_REALTIME_URL) {
+    return process.env.NEXT_PUBLIC_REALTIME_URL;
+  }
+  // 2. If provided by backend join-token or room-session response
+  if (serverUrl && serverUrl.trim()) {
+    const isLocalhost = serverUrl.includes('localhost') || serverUrl.includes('127.0.0.1');
+    const isProdBrowser =
+      typeof window !== 'undefined' &&
+      window.location.hostname !== 'localhost' &&
+      window.location.hostname !== '127.0.0.1';
+    if (!isProdBrowser || !isLocalhost) {
+      return serverUrl;
+    }
+  }
+  // 3. Localhost fallback allowed strictly during local browser development
+  if (
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  ) {
+    return 'http://localhost:4000';
+  }
+  // 4. In production without configured realtime URL, return empty string so we don't spam localhost
+  return '';
+}
+
 export class RealtimeClient {
   private socket: Socket | null = null;
   private heartbeatTimer: NodeJS.Timeout | null = null;
@@ -25,15 +52,30 @@ export class RealtimeClient {
       this.socket.disconnect();
     }
 
+    const isLocalhost =
+      this.options.url.includes('localhost') || this.options.url.includes('127.0.0.1');
+    const isProdBrowser =
+      typeof window !== 'undefined' &&
+      window.location.hostname !== 'localhost' &&
+      window.location.hostname !== '127.0.0.1';
+
+    if (!this.options.url || (isProdBrowser && isLocalhost)) {
+      console.warn(
+        '[RealtimeClient] Realtime gateway is not configured for production or points to localhost. Connection aborted.'
+      );
+      this.options.onConnectionChange?.('disconnected');
+      return;
+    }
+
     this.options.onConnectionChange?.('connecting');
 
     this.socket = io(this.options.url, {
       auth: { token: this.options.token },
       transports: ['websocket', 'polling'],
       reconnection: true,
-      reconnectionAttempts: 10,
+      reconnectionAttempts: 5,
       reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
+      reconnectionDelayMax: 4000,
       timeout: 10000,
     });
 
@@ -55,6 +97,12 @@ export class RealtimeClient {
       console.warn('[RealtimeClient] Connect error:', err.message);
       this.options.onConnectionChange?.('reconnecting');
       this.options.onError?.(err);
+    });
+
+    // Handle max reconnection attempts reached
+    this.socket.io.on('reconnect_failed', () => {
+      console.warn('[RealtimeClient] Reconnection attempts failed, marking disconnected');
+      this.options.onConnectionChange?.('disconnected');
     });
 
     this.socket.on('room_sync', (data) => {

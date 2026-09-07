@@ -33,7 +33,7 @@ import {
   Bell,
 } from 'lucide-react';
 import { apiClient } from '@/lib/api';
-import { RealtimeClient, ConnectionState } from '@/lib/realtime/realtime-client';
+import { RealtimeClient, ConnectionState, resolveRealtimeUrl } from '@/lib/realtime/realtime-client';
 import { useInterviewRoomStore, WorkspaceTab } from '@/lib/stores/use-interview-room-store';
 import { MediaManager } from '@/lib/webrtc/media-manager';
 import { PeerConnectionManager } from '@/lib/webrtc/peer-connection-manager';
@@ -237,7 +237,7 @@ export default function InterviewRoomPage() {
 
     // Initialize RealtimeClient
     const realtimeClient = new RealtimeClient({
-      url: joinData.realtime_url || process.env.NEXT_PUBLIC_REALTIME_URL || 'http://localhost:4000',
+      url: resolveRealtimeUrl(joinData.realtime_url),
       token: joinData.token,
       onConnectionChange: (state: ConnectionState) => {
         setConnectionState(state);
@@ -288,16 +288,21 @@ export default function InterviewRoomPage() {
           setSession({ ...session, status: 'completed', ended_at: event.payload.ended_at });
           router.push(`/interviews/${interviewId}/complete`);
         } else if (event.event_type === 'CHAT_MESSAGE_CREATED') {
-          const currentActiveId = useChatStore.getState().activeChannelId;
-          if (currentActiveId === event.payload?.channel_id) {
-            apiClient<any[]>(`/chat/channels/${event.payload.channel_id}/messages?limit=50`)
-              .then((msgs) => useChatStore.getState().setMessages(event.payload.channel_id, msgs))
-              .catch(() => {});
-          } else if (event.payload?.channel_id) {
-            const channels = useChatStore.getState().channels.map((c) =>
-              c.id === event.payload.channel_id ? { ...c, unread_count: c.unread_count + 1 } : c
-            );
-            useChatStore.getState().setChannels(channels);
+          const channelId = event.payload?.channel_id;
+          if (channelId && event.payload?.message) {
+            useChatStore.getState().addMessage(channelId, event.payload.message);
+          } else if (channelId) {
+            const currentActiveId = useChatStore.getState().activeChannelId;
+            if (currentActiveId === channelId) {
+              apiClient<any[]>(`/chat/channels/${channelId}/messages?limit=50`)
+                .then((msgs) => useChatStore.getState().setMessages(channelId, msgs))
+                .catch(() => {});
+            } else {
+              const channels = useChatStore.getState().channels.map((c) =>
+                c.id === channelId ? { ...c, unread_count: c.unread_count + 1 } : c
+              );
+              useChatStore.getState().setChannels(channels);
+            }
           }
         } else if (event.event_type === 'CHAT_THREAD_REPLY_CREATED') {
           if (event.payload?.parent_message_id) {

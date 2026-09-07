@@ -434,9 +434,9 @@ async function bootstrap() {
     });
   });
 
-  server.listen(config.port, () => {
-    console.log(`🚀 InterviewOS Realtime Gateway running on port ${config.port}`);
-    console.log(`📡 Health check available at http://localhost:${config.port}/health`);
+  server.listen(config.port, '0.0.0.0', () => {
+    console.log(`🚀 InterviewOS Realtime Gateway running on port ${config.port} (0.0.0.0)`);
+    console.log(`📡 Health check available at http://0.0.0.0:${config.port}/health`);
   });
 }
 

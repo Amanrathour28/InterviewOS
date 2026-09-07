@@ -45,6 +45,16 @@ function ShellContent({ children }: { children: React.ReactNode }) {
   const [orgDropdownOpen, setOrgDropdownOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
+  // If viewing an active interview room, bypass the dashboard navbar and max-w-7xl padding
+  // so the room fits 100dvh viewport without vertical or horizontal scrollbars.
+  if (pathname?.includes('/room')) {
+    return (
+      <div className="h-screen w-screen overflow-hidden bg-[#07080c]">
+        {children}
+      </div>
+    );
+  }
+
   const handleLogout = async () => {
     await logout();
     router.push('/login');

@@ -14,7 +14,7 @@ export const INTERVIEW_STAGES: StageItem[] = [
   { id: 'behavioral', label: 'Behavioral & Experience', shortLabel: 'Behavioral' },
   { id: 'technical', label: 'Core Technical', shortLabel: 'Technical' },
   { id: 'coding', label: 'Live Coding', shortLabel: 'Coding' },
-  { id: 'system_design', label: 'System Design', shortLabel: 'Architecture' },
+  { id: 'system_design', label: 'System Design', shortLabel: 'Design' },
   { id: 'closing', label: 'Q&A & Closing', shortLabel: 'Closing' },
 ];
 

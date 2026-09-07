@@ -3,9 +3,16 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_db
+from app.api.deps import (
+    get_current_user,
+    get_db,
+    get_session_participant,
+    check_session_participant_access,
+    SessionParticipantCaller,
+)
 from app.api.v1.endpoints.sessions import check_session_permission
 from app.models.user import User
+from app.models.chat import ChatChannelType
 from app.schemas.chat import (
     ChatChannelResponse,
     ChatMessageResponse,
@@ -26,19 +33,21 @@ router = APIRouter()
 @router.get("/sessions/{session_id}/chat/channels", response_model=List[ChatChannelResponse])
 async def list_session_channels(
     session_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    caller: SessionParticipantCaller = Depends(get_session_participant),
     db: AsyncSession = Depends(get_db),
 ):
     """Lists all accessible chat channels for the caller in the specified session."""
     session = await session_service.get_session(session_id, db)
-    is_interviewer, _ = await check_session_permission(
-        session, current_user, db, require_interviewer=False
+    is_interviewer, _ = await check_session_participant_access(
+        session, caller, db, require_interviewer=False
     )
 
     channels = await chat_service.get_accessible_channels(session, is_interviewer, db)
     response = []
     for c in channels:
-        unread = await chat_service.get_unread_count(c.id, current_user.id, is_interviewer, db)
+        unread = 0
+        if caller.user:
+            unread = await chat_service.get_unread_count(c.id, caller.user.id, is_interviewer, db)
         response.append(
             ChatChannelResponse(
                 id=c.id,
@@ -58,16 +67,22 @@ async def get_channel_messages(
     channel_id: uuid.UUID,
     limit: int = Query(50, ge=1, le=100),
     before_id: Optional[uuid.UUID] = Query(None),
-    current_user: User = Depends(get_current_user),
+    caller: SessionParticipantCaller = Depends(get_session_participant),
     db: AsyncSession = Depends(get_db),
 ):
     """Fetches paginated top-level chat messages in chronological order."""
     # First fetch channel to resolve session
     channel = await chat_service.get_channel_or_404(channel_id, is_interviewer=True, db=db)
     session = await session_service.get_session(channel.session_id, db)
-    is_interviewer, _ = await check_session_permission(
-        session, current_user, db, require_interviewer=False
+    is_interviewer, _ = await check_session_participant_access(
+        session, caller, db, require_interviewer=False
     )
+
+    if channel.channel_type == ChatChannelType.INTERVIEWER_PRIVATE and not is_interviewer:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Candidates are forbidden from accessing the private interviewer channel",
+        )
 
     return await chat_service.get_messages(
         channel_id=channel_id,
@@ -82,22 +97,29 @@ async def get_channel_messages(
 async def send_message(
     channel_id: uuid.UUID,
     request: MessageCreateRequest,
-    current_user: User = Depends(get_current_user),
+    caller: SessionParticipantCaller = Depends(get_session_participant),
     db: AsyncSession = Depends(get_db),
 ):
     """Sends a new text message or structured code snippet."""
     channel = await chat_service.get_channel_or_404(channel_id, is_interviewer=True, db=db)
     session = await session_service.get_session(channel.session_id, db)
-    is_interviewer, resolved_role = await check_session_permission(
-        session, current_user, db, require_interviewer=False
+    is_interviewer, resolved_role = await check_session_participant_access(
+        session, caller, db, require_interviewer=False
     )
 
-    sender_name = f"{current_user.first_name} {current_user.last_name}".strip()
+    if channel.channel_type == ChatChannelType.INTERVIEWER_PRIVATE and not is_interviewer:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Candidates are forbidden from posting to the private interviewer channel",
+        )
+
+    sender_id = caller.user.id if caller.user else None
+    sender_name = caller.name
 
     msg = await chat_service.send_message(
         channel_id=channel_id,
         session=session,
-        sender_id=current_user.id,
+        sender_id=sender_id,
         sender_name=sender_name,
         sender_role=resolved_role,
         is_interviewer=is_interviewer,
@@ -334,23 +356,26 @@ async def toggle_reaction(
 async def mark_channel_read(
     channel_id: uuid.UUID,
     request: ReadCursorRequest,
-    current_user: User = Depends(get_current_user),
+    caller: SessionParticipantCaller = Depends(get_session_participant),
     db: AsyncSession = Depends(get_db),
 ):
     """Updates user last read cursor for channel."""
     channel = await chat_service.get_channel_or_404(channel_id, is_interviewer=True, db=db)
     session = await session_service.get_session(channel.session_id, db)
-    is_interviewer, _ = await check_session_permission(session, current_user, db, require_interviewer=False)
+    is_interviewer, _ = await check_session_participant_access(session, caller, db, require_interviewer=False)
 
-    await chat_service.update_read_state(
-        channel_id=channel_id,
-        user_id=current_user.id,
-        last_read_message_id=request.last_read_message_id,
-        is_interviewer=is_interviewer,
-        db=db,
-    )
+    if caller.user:
+        await chat_service.update_read_state(
+            channel_id=channel_id,
+            user_id=caller.user.id,
+            last_read_message_id=request.last_read_message_id,
+            is_interviewer=is_interviewer,
+            db=db,
+        )
+        unread = await chat_service.get_unread_count(channel_id, caller.user.id, is_interviewer, db)
+    else:
+        unread = 0
 
-    unread = await chat_service.get_unread_count(channel_id, current_user.id, is_interviewer, db)
     return UnreadCountResponse(
         channel_id=channel_id,
         channel_type=channel.channel_type.value,
@@ -361,15 +386,19 @@ async def mark_channel_read(
 @router.get("/chat/channels/{channel_id}/unread", response_model=UnreadCountResponse)
 async def get_channel_unread(
     channel_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    caller: SessionParticipantCaller = Depends(get_session_participant),
     db: AsyncSession = Depends(get_db),
 ):
     """Returns unread message count for user in channel."""
     channel = await chat_service.get_channel_or_404(channel_id, is_interviewer=True, db=db)
     session = await session_service.get_session(channel.session_id, db)
-    is_interviewer, _ = await check_session_permission(session, current_user, db, require_interviewer=False)
+    is_interviewer, _ = await check_session_participant_access(session, caller, db, require_interviewer=False)
 
-    unread = await chat_service.get_unread_count(channel_id, current_user.id, is_interviewer, db)
+    if caller.user:
+        unread = await chat_service.get_unread_count(channel_id, caller.user.id, is_interviewer, db)
+    else:
+        unread = 0
+
     return UnreadCountResponse(
         channel_id=channel_id,
         channel_type=channel.channel_type.value,

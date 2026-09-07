@@ -3,7 +3,13 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_db
+from app.api.deps import (
+    get_current_user,
+    get_db,
+    get_session_participant,
+    check_session_participant_access,
+    SessionParticipantCaller,
+)
 from app.api.v1.endpoints.sessions import check_session_permission
 from app.models.user import User
 from app.schemas.coding import (
@@ -27,16 +33,17 @@ router = APIRouter()
 @router.get("/sessions/{session_id}/coding", response_model=CodingSessionResponse)
 async def get_or_create_session_coding(
     session_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    caller: SessionParticipantCaller = Depends(get_session_participant),
     db: AsyncSession = Depends(get_db),
 ):
     """Retrieves or initializes the collaborative coding session attached to an interview session."""
     session = await session_service.get_session(session_id, db)
-    await check_session_permission(session, current_user, db, require_interviewer=False)
+    await check_session_participant_access(session, caller, db, require_interviewer=False)
 
+    user_id = caller.user.id if caller.user else (session.created_by or uuid.uuid4())
     coding_session = await coding_service.get_or_create_coding_session(
         interview_session=session,
-        user_id=current_user.id,
+        user_id=user_id,
         db=db,
     )
 
@@ -72,13 +79,13 @@ async def get_or_create_session_coding(
 @router.get("/coding/sessions/{coding_session_id}", response_model=CodingSessionResponse)
 async def get_coding_session_detail(
     coding_session_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    caller: SessionParticipantCaller = Depends(get_session_participant),
     db: AsyncSession = Depends(get_db),
 ):
     """Fetches full coding session metadata, files, and settings."""
     coding_session = await coding_service.get_coding_session_or_404(coding_session_id, db)
     session = await session_service.get_session(coding_session.interview_session_id, db)
-    await check_session_permission(session, current_user, db, require_interviewer=False)
+    await check_session_participant_access(session, caller, db, require_interviewer=False)
 
     return CodingSessionResponse(
         id=coding_session.id,
@@ -162,17 +169,18 @@ async def set_coding_editor_lock(
 async def create_workspace_file(
     coding_session_id: uuid.UUID,
     request: CodingFileCreateRequest,
-    current_user: User = Depends(get_current_user),
+    caller: SessionParticipantCaller = Depends(get_session_participant),
     db: AsyncSession = Depends(get_db),
 ):
     """Creates a new file in the workspace."""
     coding_session = await coding_service.get_coding_session_or_404(coding_session_id, db)
     session = await session_service.get_session(coding_session.interview_session_id, db)
-    is_interviewer, _ = await check_session_permission(session, current_user, db, require_interviewer=False)
+    is_interviewer, _ = await check_session_participant_access(session, caller, db, require_interviewer=False)
 
+    user_id = caller.user.id if caller.user else None
     file = await coding_service.create_file(
         coding_session_id=coding_session_id,
-        user_id=current_user.id,
+        user_id=user_id,
         is_interviewer=is_interviewer,
         request=request,
         db=db,
@@ -195,7 +203,7 @@ async def create_workspace_file(
 async def update_workspace_file(
     file_id: uuid.UUID,
     request: CodingFileUpdateRequest,
-    current_user: User = Depends(get_current_user),
+    caller: SessionParticipantCaller = Depends(get_session_participant),
     db: AsyncSession = Depends(get_db),
 ):
     """Updates file content, path, or active tab state."""
@@ -208,11 +216,12 @@ async def update_workspace_file(
 
     coding_session = await coding_service.get_coding_session_or_404(file.coding_session_id, db)
     session = await session_service.get_session(coding_session.interview_session_id, db)
-    is_interviewer, _ = await check_session_permission(session, current_user, db, require_interviewer=False)
+    is_interviewer, _ = await check_session_participant_access(session, caller, db, require_interviewer=False)
 
+    user_id = caller.user.id if caller.user else None
     updated = await coding_service.update_file(
         file_id=file_id,
-        user_id=current_user.id,
+        user_id=user_id,
         is_interviewer=is_interviewer,
         request=request,
         db=db,
@@ -234,7 +243,7 @@ async def update_workspace_file(
 @router.delete("/coding/files/{file_id}")
 async def delete_workspace_file(
     file_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    caller: SessionParticipantCaller = Depends(get_session_participant),
     db: AsyncSession = Depends(get_db),
 ):
     """Deletes a file from the workspace."""
@@ -247,11 +256,12 @@ async def delete_workspace_file(
 
     coding_session = await coding_service.get_coding_session_or_404(file.coding_session_id, db)
     session = await session_service.get_session(coding_session.interview_session_id, db)
-    is_interviewer, _ = await check_session_permission(session, current_user, db, require_interviewer=False)
+    is_interviewer, _ = await check_session_participant_access(session, caller, db, require_interviewer=False)
 
+    user_id = caller.user.id if caller.user else None
     await coding_service.delete_file(
         file_id=file_id,
-        user_id=current_user.id,
+        user_id=user_id,
         is_interviewer=is_interviewer,
         db=db,
     )
@@ -262,17 +272,18 @@ async def delete_workspace_file(
 async def create_workspace_snapshot(
     coding_session_id: uuid.UUID,
     request: CodingSnapshotCreateRequest,
-    current_user: User = Depends(get_current_user),
+    caller: SessionParticipantCaller = Depends(get_session_participant),
     db: AsyncSession = Depends(get_db),
 ):
     """Takes an immutable snapshot of all files in the workspace."""
     coding_session = await coding_service.get_coding_session_or_404(coding_session_id, db)
     session = await session_service.get_session(coding_session.interview_session_id, db)
-    await check_session_permission(session, current_user, db, require_interviewer=False)
+    await check_session_participant_access(session, caller, db, require_interviewer=False)
 
+    user_id = caller.user.id if caller.user else None
     snapshot = await coding_service.create_snapshot(
         coding_session=coding_session,
-        user_id=current_user.id,
+        user_id=user_id,
         reason=request.reason,
         files_data=request.files,
         db=db,
@@ -291,13 +302,13 @@ async def create_workspace_snapshot(
 @router.get("/coding/sessions/{coding_session_id}/snapshots", response_model=List[CodingSnapshotResponse])
 async def list_workspace_snapshots(
     coding_session_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    caller: SessionParticipantCaller = Depends(get_session_participant),
     db: AsyncSession = Depends(get_db),
 ):
     """Lists past immutable snapshots in the workspace."""
     coding_session = await coding_service.get_coding_session_or_404(coding_session_id, db)
     session = await session_service.get_session(coding_session.interview_session_id, db)
-    await check_session_permission(session, current_user, db, require_interviewer=False)
+    await check_session_participant_access(session, caller, db, require_interviewer=False)
 
     return [
         CodingSnapshotResponse(
@@ -316,17 +327,18 @@ async def list_workspace_snapshots(
 async def execute_workspace_code(
     coding_session_id: uuid.UUID,
     request: CodingExecutionRequest,
-    current_user: User = Depends(get_current_user),
+    caller: SessionParticipantCaller = Depends(get_session_participant),
     db: AsyncSession = Depends(get_db),
 ):
     """Runs untrusted code inside the isolated Docker sandbox."""
     coding_session = await coding_service.get_coding_session_or_404(coding_session_id, db)
     session = await session_service.get_session(coding_session.interview_session_id, db)
-    is_interviewer, _ = await check_session_permission(session, current_user, db, require_interviewer=False)
+    is_interviewer, _ = await check_session_participant_access(session, caller, db, require_interviewer=False)
 
+    user_id = caller.user.id if caller.user else None
     job = await coding_service.create_execution_job(
         coding_session_id=coding_session_id,
-        user_id=current_user.id,
+        user_id=user_id,
         is_interviewer=is_interviewer,
         request=request,
         db=db,
@@ -370,7 +382,7 @@ async def execute_workspace_code(
 @router.get("/coding/executions/{job_id}", response_model=CodingExecutionJobResponse)
 async def get_execution_job_status(
     job_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    caller: SessionParticipantCaller = Depends(get_session_participant),
     db: AsyncSession = Depends(get_db),
 ):
     """Retrieves execution status and sanitized test results."""
@@ -387,7 +399,7 @@ async def get_execution_job_status(
 
     coding_session = await coding_service.get_coding_session_or_404(job.coding_session_id, db)
     session = await session_service.get_session(coding_session.interview_session_id, db)
-    is_interviewer, _ = await check_session_permission(session, current_user, db, require_interviewer=False)
+    is_interviewer, _ = await check_session_participant_access(session, caller, db, require_interviewer=False)
 
     result_res = None
     if job.result:

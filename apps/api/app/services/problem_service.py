@@ -170,7 +170,7 @@ class ProblemService:
         return problem
 
     async def get_problem_or_404(
-        self, problem_id: uuid.UUID, user: User, db: AsyncSession, require_write: bool = False
+        self, problem_id: uuid.UUID, user: Optional[User], db: AsyncSession, require_write: bool = False
     ) -> CodingProblem:
         result = await db.execute(
             select(CodingProblem)
@@ -183,14 +183,22 @@ class ProblemService:
         if not problem:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Problem not found")
 
-        await self.check_problem_access(problem, user, db, require_write=require_write)
+        if user:
+            await self.check_problem_access(problem, user, db, require_write=require_write)
+        elif require_write:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Authentication required")
         return problem
 
     async def get_problem_detail(
-        self, problem_id: uuid.UUID, user: User, db: AsyncSession
+        self,
+        problem_id: uuid.UUID,
+        user: Optional[User],
+        db: AsyncSession,
+        is_interviewer: Optional[bool] = None,
     ) -> ProblemDetailResponse:
         problem = await self.get_problem_or_404(problem_id, user, db, require_write=False)
-        is_interviewer = user.role in (UserRole.ORGANIZATION_ADMIN, UserRole.PLATFORM_ADMIN, UserRole.RECRUITER)
+        if is_interviewer is None:
+            is_interviewer = bool(user and user.role in (UserRole.ORGANIZATION_ADMIN, UserRole.PLATFORM_ADMIN, UserRole.RECRUITER, UserRole.INTERVIEWER))
 
         # Resolve active / latest version
         latest_version = None

@@ -137,7 +137,24 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         setTyping(data.channelId, { userId: data.userId, userName: data.userName }, data.isTyping);
       }
     });
-  }, [realtimeClient, currentUserId, setTyping]);
+
+    const socket = realtimeClient.getSocket();
+    if (socket) {
+      const handleInterviewEvent = (event: any) => {
+        if (event?.event_type === 'CHAT_MESSAGE_CREATED') {
+          const channelId = event.payload?.channel_id;
+          const message = event.payload?.message;
+          if (channelId && message) {
+            addMessage(channelId, message);
+          }
+        }
+      };
+      socket.on('interview_event', handleInterviewEvent);
+      return () => {
+        socket.off('interview_event', handleInterviewEvent);
+      };
+    }
+  }, [realtimeClient, currentUserId, setTyping, addMessage]);
 
   // 5. Send plain text message
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -183,6 +200,10 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         }),
       });
       addMessage(activeChannelId, serverMsg);
+      realtimeClient?.dispatchEvent('CHAT_MESSAGE_CREATED', {
+        channel_id: activeChannelId,
+        message: serverMsg,
+      });
     } catch (err: any) {
       console.warn('[ChatPanel] Send message failed:', err);
     } finally {
@@ -227,6 +248,10 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         }),
       });
       addMessage(activeChannelId, serverMsg);
+      realtimeClient?.dispatchEvent('CHAT_MESSAGE_CREATED', {
+        channel_id: activeChannelId,
+        message: serverMsg,
+      });
     } catch (err: any) {
       console.warn('[ChatPanel] Share code failed:', err);
     }

@@ -84,12 +84,14 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
           // If locked and candidate, don't propagate
           if (isLocked && !isInterviewer) return;
 
-          // Broadcast patch over socket
+          // Broadcast pure RecordsDiff { added, updated, removed } rather than HistoryEntry wrapper
+          const diff = (change as any)?.changes || change;
+
           if (realtimeClient) {
             const socket = realtimeClient.getSocket();
             if (socket) {
               socket.emit('whiteboard_patch', {
-                changes: change,
+                changes: diff,
                 isLocked,
               });
             }
@@ -120,8 +122,21 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
       if (!editorRef.current || !data.changes) return;
 
       try {
+        let diff = data.changes;
+        // Normalize payload if wrapped inside HistoryEntry
+        if (diff && typeof diff === 'object' && 'changes' in diff) {
+          diff = diff.changes;
+        }
+        if (!diff || typeof diff !== 'object') return;
+
+        const normalizedDiff = {
+          added: diff.added || {},
+          updated: diff.updated || {},
+          removed: diff.removed || {},
+        };
+
         isApplyingRemoteUpdate.current = true;
-        editorRef.current.store.applyDiff(data.changes);
+        editorRef.current.store.applyDiff(normalizedDiff);
       } catch (err) {
         console.error('Failed to apply remote whiteboard patch:', err);
       } finally {

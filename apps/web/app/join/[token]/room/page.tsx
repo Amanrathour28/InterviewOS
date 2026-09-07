@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import { getCandidateSession, clearCandidateSession } from '@/lib/candidate-session';
 import { setApiAuthToken } from '@/lib/api';
-import { RealtimeClient, ConnectionState } from '@/lib/realtime/realtime-client';
+import { RealtimeClient, ConnectionState, resolveRealtimeUrl } from '@/lib/realtime/realtime-client';
 import { PeerConnectionManager } from '@/lib/webrtc/peer-connection-manager';
 import { SignalingManager } from '@/lib/webrtc/signaling-manager';
 import { useChatStore } from '@/lib/stores/use-chat-store';
@@ -221,10 +221,7 @@ export default function CandidateRoomPage() {
         }
 
         // Determine correct realtime URL
-        const realtimeUrl =
-          roomData.realtime_url && !roomData.realtime_url.includes('localhost')
-            ? roomData.realtime_url
-            : process.env.NEXT_PUBLIC_REALTIME_URL || roomData.realtime_url || 'http://localhost:4000';
+        const realtimeUrl = resolveRealtimeUrl(roomData.realtime_url);
 
         // Initialize RealtimeClient
         const realtimeClient = new RealtimeClient({

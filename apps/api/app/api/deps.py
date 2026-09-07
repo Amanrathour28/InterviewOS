@@ -1,5 +1,5 @@
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy import select
@@ -355,5 +355,130 @@ async def get_candidate_session(
         )
 
     return payload
+
+
+class SessionParticipantCaller:
+    """Encapsulates the caller context for interview session features (chat, coding, whiteboard).
+
+    Distinguishes platform User (interviewers/admins) from guest candidates holding a signed
+    candidate session token, without creating fake User database records or weakening authorization.
+    """
+
+    def __init__(
+        self,
+        user: Optional[User] = None,
+        candidate_claims: Optional[Dict[str, Any]] = None,
+    ):
+        self.user = user
+        self.candidate_claims = candidate_claims
+        self.is_candidate = candidate_claims is not None
+        self.is_interviewer = not self.is_candidate
+        if user:
+            self.id = user.id
+            self.name = f"{user.first_name} {user.last_name}".strip() or user.email
+            self.email = user.email
+            self.role = user.role.value if hasattr(user.role, "value") else str(user.role)
+            self.interview_id = None
+            self.invitation_id = None
+            self.session_id = None
+        elif candidate_claims:
+            self.id = None
+            self.name = candidate_claims.get("candidate_name") or candidate_claims.get("user_name") or "Candidate"
+            self.email = candidate_claims.get("user_email") or ""
+            self.role = "candidate"
+            self.interview_id = candidate_claims.get("interview_id")
+            self.invitation_id = candidate_claims.get("invitation_id")
+            self.session_id = candidate_claims.get("session_id")
+
+
+async def get_session_participant(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: AsyncSession = Depends(get_db),
+) -> SessionParticipantCaller:
+    """Extract and validate the caller as either an authenticated platform user or guest candidate.
+
+    Used by interview collaboration endpoints (chat, coding, whiteboard) where both interviewers
+    and invited candidates participate.
+    """
+    token = None
+    if credentials:
+        token = credentials.credentials
+    else:
+        token = request.cookies.get("access_token") or request.cookies.get("candidate_session")
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication credentials were not provided",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # 1. Try platform User access token
+    payload = decode_access_token(token)
+    if payload:
+        user_id_str = payload.get("sub")
+        if user_id_str:
+            try:
+                user_uuid = uuid.UUID(user_id_str)
+                stmt = select(User).where(User.id == user_uuid, User.is_deleted.is_(False))
+                result = await db.execute(stmt)
+                user = result.scalar_one_or_none()
+                if user and user.is_active:
+                    return SessionParticipantCaller(user=user)
+            except ValueError:
+                pass
+
+    # 2. Try candidate session token
+    cand_payload = decode_candidate_session_token(token)
+    if cand_payload and cand_payload.get("scope") == "candidate":
+        return SessionParticipantCaller(candidate_claims=cand_payload)
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or expired session credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+async def check_session_participant_access(
+    session: Any,
+    caller: SessionParticipantCaller,
+    db: AsyncSession,
+    require_interviewer: bool = False,
+) -> Tuple[bool, str]:
+    """Validates that caller is authorized to access the given session and determines their role.
+
+    Candidates:
+    - Must possess a valid candidate token belonging to this interview.
+    - Cannot perform interviewer-only operations (raises 403).
+    - Cannot access sessions belonging to other interviews.
+
+    Interviewers/Platform Users:
+    - Delegated to existing check_session_permission for full role and workspace checking.
+    """
+    if caller.is_candidate:
+        if require_interviewer:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission denied: Interviewer privileges required for this action",
+            )
+        # Verify candidate token is bound to this interview
+        if caller.interview_id and str(session.interview_id) != str(caller.interview_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission denied: Candidate token is not valid for this interview",
+            )
+        if caller.session_id and str(session.id) != str(caller.session_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission denied: Candidate token is not valid for this session",
+            )
+        return False, "candidate"
+
+    # For platform users, perform standard permission check
+    from app.api.v1.endpoints.sessions import check_session_permission
+    return await check_session_permission(session, caller.user, db, require_interviewer=require_interviewer)
+
 
 

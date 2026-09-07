@@ -597,7 +597,9 @@ async def get_candidate_room_session(
     )
 
     ice_servers = session_service.get_ice_servers()
-    realtime_url = getattr(settings, "REALTIME_URL", "http://localhost:4000")
+    realtime_url = getattr(settings, "REALTIME_URL", "")
+    if getattr(settings, "APP_ENV", "development") == "production" and ("localhost" in realtime_url or "127.0.0.1" in realtime_url):
+        realtime_url = ""
 
     return CandidateRoomSessionResponse(
         session_id=session.id,

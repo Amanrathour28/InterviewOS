@@ -3,7 +3,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.api.deps import get_current_user, get_db
+from app.api.deps import get_current_user, get_db, get_session_participant, SessionParticipantCaller
 from app.models.coding import CodingProblem, CodingProblemVersion, CodingTestCase
 from app.models.user import User, UserRole
 from app.schemas.problem import (
@@ -106,11 +106,16 @@ async def create_problem(
 @router.get("/coding/problems/{problem_id}", response_model=ProblemDetailResponse)
 async def get_problem(
     problem_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
+    caller: SessionParticipantCaller = Depends(get_session_participant),
     db: AsyncSession = Depends(get_db),
 ):
     """Fetches full problem details with candidate hidden-test sanitization."""
-    return await problem_service.get_problem_detail(problem_id, current_user, db)
+    return await problem_service.get_problem_detail(
+        problem_id,
+        caller.user,
+        db,
+        is_interviewer=caller.is_interviewer,
+    )
 
 
 @router.patch("/coding/problems/{problem_id}", response_model=ProblemDetailResponse)
@@ -237,24 +242,22 @@ async def assign_problem_to_session(
 async def submit_problem_solution(
     session_id: uuid.UUID,
     request: ProblemSubmitRequest,
-    current_user: User = Depends(get_current_user),
+    caller: SessionParticipantCaller = Depends(get_session_participant),
     db: AsyncSession = Depends(get_db),
 ):
     """Submits candidate code, runs Docker sandbox on public + hidden tests, and scores attempt."""
-    is_interviewer = current_user.role in (UserRole.ORGANIZATION_ADMIN, UserRole.PLATFORM_ADMIN, UserRole.RECRUITER)
-    return await assessment_service.submit_solution(session_id, request, current_user, is_interviewer, db)
+    return await assessment_service.submit_solution(session_id, request, caller.user, caller.is_interviewer, db)
 
 
 @router.get("/coding/sessions/{session_id}/problems/submissions", response_model=List[SubmissionResponse])
 async def get_problem_submissions(
     session_id: uuid.UUID,
     problem_version_id: Optional[uuid.UUID] = None,
-    current_user: User = Depends(get_current_user),
+    caller: SessionParticipantCaller = Depends(get_session_participant),
     db: AsyncSession = Depends(get_db),
 ):
     """Gets attempt history for the active session problem with hidden test sanitization."""
-    is_interviewer = current_user.role in (UserRole.ORGANIZATION_ADMIN, UserRole.PLATFORM_ADMIN, UserRole.RECRUITER)
-    return await assessment_service.get_submission_history(session_id, problem_version_id, current_user, is_interviewer, db)
+    return await assessment_service.get_submission_history(session_id, problem_version_id, caller.user, caller.is_interviewer, db)
 
 
 @router.get("/coding/sessions/{session_id}/problems/{version_id}/assessment", response_model=Optional[AssessmentSummaryResponse])

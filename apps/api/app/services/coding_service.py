@@ -212,7 +212,7 @@ class CodingService:
     async def create_file(
         self,
         coding_session_id: uuid.UUID,
-        user_id: uuid.UUID,
+        user_id: Optional[uuid.UUID],
         is_interviewer: bool,
         request: CodingFileCreateRequest,
         db: AsyncSession,
@@ -272,7 +272,7 @@ class CodingService:
     async def update_file(
         self,
         file_id: uuid.UUID,
-        user_id: uuid.UUID,
+        user_id: Optional[uuid.UUID],
         is_interviewer: bool,
         request: CodingFileUpdateRequest,
         db: AsyncSession,
@@ -317,7 +317,7 @@ class CodingService:
     async def delete_file(
         self,
         file_id: uuid.UUID,
-        user_id: uuid.UUID,
+        user_id: Optional[uuid.UUID],
         is_interviewer: bool,
         db: AsyncSession,
     ) -> None:
@@ -371,7 +371,7 @@ class CodingService:
     async def create_execution_job(
         self,
         coding_session_id: uuid.UUID,
-        user_id: uuid.UUID,
+        user_id: Optional[uuid.UUID],
         is_interviewer: bool,
         request: CodingExecutionRequest,
         db: AsyncSession,

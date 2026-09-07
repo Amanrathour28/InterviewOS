@@ -170,13 +170,16 @@ class AssessmentService:
         self,
         coding_session_id: uuid.UUID,
         request: ProblemSubmitRequest,
-        user: User,
+        user: Optional[User],
         is_interviewer: bool,
         db: AsyncSession,
     ) -> SubmissionResponse:
         """Executes candidate code against both public and hidden test cases, computes score, and records submission."""
         coding_session = await coding_service.get_coding_session_or_404(coding_session_id, db)
         session = await session_service.get_session(coding_session.interview_session_id, db)
+
+        # Resolve candidate ID from user or parent interview candidate
+        cand_user_id = user.id if user else (session.interview.candidate_id if (session.interview and session.interview.candidate_id) else None)
 
         if not coding_session.active_problem_version_id:
             raise HTTPException(
@@ -207,7 +210,7 @@ class AssessmentService:
         snapshot = CodingSnapshot(
             id=uuid.uuid4(),
             coding_session_id=coding_session.id,
-            created_by=user.id,
+            created_by=cand_user_id,
             reason=CodingSnapshotReason.SUBMISSION,
             files_json=files_to_run,
         )
@@ -218,7 +221,7 @@ class AssessmentService:
         execution_job = CodingExecutionJob(
             id=uuid.uuid4(),
             coding_session_id=coding_session.id,
-            requested_by=user.id,
+            requested_by=cand_user_id,
             snapshot_id=snapshot.id,
             status=ExecutionJobStatus.RUNNING,
             language=request.language or coding_session.language,
@@ -314,7 +317,7 @@ class AssessmentService:
             id=uuid.uuid4(),
             coding_session_id=coding_session.id,
             problem_version_id=problem_version.id,
-            candidate_id=user.id,
+            candidate_id=cand_user_id,
             submission_number=attempt_number,
             language=execution_job.language,
             snapshot_id=snapshot.id,
@@ -336,7 +339,7 @@ class AssessmentService:
                 and_(
                     CodingAssessment.coding_session_id == coding_session.id,
                     CodingAssessment.problem_version_id == problem_version.id,
-                    CodingAssessment.candidate_id == user.id,
+                    CodingAssessment.candidate_id == cand_user_id,
                 )
             )
         )
@@ -346,7 +349,7 @@ class AssessmentService:
                 id=uuid.uuid4(),
                 coding_session_id=coding_session.id,
                 problem_version_id=problem_version.id,
-                candidate_id=user.id,
+                candidate_id=cand_user_id,
                 total_submissions=1,
                 best_score=calculated_score,
                 passed=status_verdict == SubmissionStatus.ACCEPTED,
@@ -370,7 +373,7 @@ class AssessmentService:
         await session_service.log_event(
             session=session,
             event_type="CODING_SUBMISSION_CREATED",
-            actor_id=user.id,
+            actor_id=cand_user_id,
             actor_role="interviewer" if is_interviewer else "candidate",
             payload={
                 "submission_id": str(submission.id),
@@ -420,15 +423,15 @@ class AssessmentService:
         )
 
     async def get_submission_history(
-        self, coding_session_id: uuid.UUID, problem_version_id: Optional[uuid.UUID], user: User, is_interviewer: bool, db: AsyncSession
+        self, coding_session_id: uuid.UUID, problem_version_id: Optional[uuid.UUID], user: Optional[User], is_interviewer: bool, db: AsyncSession
     ) -> List[SubmissionResponse]:
         """Retrieves attempt submission history with candidate hidden test sanitization."""
         query = select(CodingSubmission).where(CodingSubmission.coding_session_id == coding_session_id)
         if problem_version_id:
             query = query.where(CodingSubmission.problem_version_id == problem_version_id)
 
-        # If candidate, only see own submissions
-        if not is_interviewer:
+        # If candidate user, filter to candidate's submissions
+        if not is_interviewer and user:
             query = query.where(CodingSubmission.candidate_id == user.id)
 
         query = query.order_by(CodingSubmission.submission_number.desc())

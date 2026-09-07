@@ -481,7 +481,9 @@ async def get_join_token(
         is_interviewer=is_interviewer,
     )
 
-    realtime_url = getattr(settings, "REALTIME_URL", "http://localhost:4000")
+    realtime_url = getattr(settings, "REALTIME_URL", "")
+    if getattr(settings, "APP_ENV", "development") == "production" and ("localhost" in realtime_url or "127.0.0.1" in realtime_url):
+        realtime_url = ""
     ice_servers = session_service.get_ice_servers()
 
     return JoinTokenResponse(
