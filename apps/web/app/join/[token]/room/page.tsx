@@ -89,6 +89,7 @@ export default function CandidateRoomPage() {
 
   // 1. Validate candidate session from localStorage/sessionStorage
   useEffect(() => {
+    if (!token) return;
     const session = getCandidateSession(token);
     if (!session) {
       setSessionMissing(true);

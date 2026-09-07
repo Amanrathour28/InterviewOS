@@ -719,3 +719,111 @@ async def test_candidate_room_session_unrelated_interview_rejected(client: Async
         headers={"Authorization": f"Bearer {token_cand_a}"},
     )
     assert cross_resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_fresh_candidate_token_is_not_immediately_expired(client: AsyncClient, db_session):
+    """A fresh candidate session token must have iat and exp in UTC, valid for 4 hours."""
+    user, ws, org = await _create_user_workspace(db_session)
+    await db_session.commit()
+
+    create_resp = await client.post(
+        "/api/v1/interviews/instant",
+        json={"workspace_id": str(ws.id), "interview_type": "coding", "duration_minutes": 45},
+        headers=_auth_headers(user.id),
+    )
+    token = create_resp.json()["token"]
+
+    id_resp = await client.post(
+        f"/api/v1/interviews/join/{token}/identity",
+        json={"name": "Alice Candidate"},
+    )
+    assert id_resp.status_code == 200
+    candidate_jwt = id_resp.json()["candidate_session_token"]
+
+    claims = decode_candidate_session_token(candidate_jwt)
+    assert claims is not None
+    now_ts = datetime.now(timezone.utc).timestamp()
+    assert claims["exp"] > now_ts + 3600  # at least 1 hour in the future (nominally 4 hours)
+    assert claims["iat"] <= now_ts + 5    # issued at or slightly before current time
+
+
+@pytest.mark.asyncio
+async def test_expired_candidate_token_returns_401(client: AsyncClient, db_session):
+    """An expired candidate session token must be rejected with HTTP 401."""
+    import jwt
+    from app.core.config import settings
+    from app.core.security import JWT_ALGORITHM
+
+    user, ws, org = await _create_user_workspace(db_session)
+    await db_session.commit()
+
+    create_resp = await client.post(
+        "/api/v1/interviews/instant",
+        json={"workspace_id": str(ws.id), "interview_type": "technical", "duration_minutes": 60},
+        headers=_auth_headers(user.id),
+    )
+    token = create_resp.json()["token"]
+    interview_id = create_resp.json()["interview_id"]
+
+    past = datetime.now(timezone.utc) - timedelta(minutes=10)
+    expired_payload = {
+        "sub": "candidate-session:expired-test",
+        "type": "candidate_session",
+        "scope": "candidate",
+        "invitation_id": "test-inv-id",
+        "interview_id": interview_id,
+        "candidate_name": "Expired User",
+        "iat": past - timedelta(hours=1),
+        "exp": past,
+    }
+    expired_jwt = jwt.encode(expired_payload, settings.SECRET_KEY, algorithm=JWT_ALGORITHM)
+
+    resp = await client.post(
+        f"/api/v1/interviews/join/{token}/room-session",
+        headers={"Authorization": f"Bearer {expired_jwt}"},
+    )
+    assert resp.status_code == 401
+    assert "Invalid or expired" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_invitation_token_cannot_be_used_as_candidate_jwt(client: AsyncClient, db_session):
+    """The raw invitation URL token cannot be sent as a Bearer JWT."""
+    user, ws, org = await _create_user_workspace(db_session)
+    await db_session.commit()
+
+    create_resp = await client.post(
+        "/api/v1/interviews/instant",
+        json={"workspace_id": str(ws.id), "interview_type": "technical", "duration_minutes": 60},
+        headers=_auth_headers(user.id),
+    )
+    token = create_resp.json()["token"]
+
+    resp = await client.post(
+        f"/api/v1/interviews/join/{token}/room-session",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_interviewer_token_cannot_be_used_as_candidate_jwt(client: AsyncClient, db_session):
+    """An interviewer access token (type='access') must be rejected by candidate-scoped endpoints."""
+    user, ws, org = await _create_user_workspace(db_session)
+    await db_session.commit()
+
+    create_resp = await client.post(
+        "/api/v1/interviews/instant",
+        json={"workspace_id": str(ws.id), "interview_type": "technical", "duration_minutes": 60},
+        headers=_auth_headers(user.id),
+    )
+    token = create_resp.json()["token"]
+
+    interviewer_headers = _auth_headers(user.id)
+    resp = await client.post(
+        f"/api/v1/interviews/join/{token}/room-session",
+        headers=interviewer_headers,
+    )
+    assert resp.status_code == 401
+

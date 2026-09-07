@@ -40,6 +40,7 @@ export default function CandidateWaitingRoomPage() {
 
   // Validate session and start polling
   useEffect(() => {
+    if (!token) return;
     const session = getCandidateSession(token);
     if (!session) {
       setSessionMissing(true);
@@ -59,7 +60,7 @@ export default function CandidateWaitingRoomPage() {
         if (!res.ok) {
           if (res.status === 401 || res.status === 403) {
             // Session expired — redirect to start
-            clearCandidateSession();
+            clearCandidateSession(token);
             router.replace(`/join/${token}`);
             return;
           }

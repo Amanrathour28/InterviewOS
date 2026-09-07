@@ -14,7 +14,7 @@ import {
   ChevronRight,
   ArrowLeft,
 } from 'lucide-react';
-import { getCandidateSession } from '@/lib/candidate-session';
+import { inspectCandidateSession, clearCandidateSession } from '@/lib/candidate-session';
 
 type DeviceState = 'checking' | 'ok' | 'error' | 'denied';
 
@@ -30,14 +30,13 @@ export default function CandidateDeviceCheckPage() {
   const [micState, setMicState] = useState<DeviceState>('checking');
   const [speakerState, setSpeakerState] = useState<DeviceState>('ok'); // browsers don't test speakers directly
   const [isReady, setIsReady] = useState(false);
-  const [sessionMissing, setSessionMissing] = useState(false);
+  const [sessionState, setSessionState] = useState<'CHECKING' | 'VALID' | 'MISSING' | 'EXPIRED' | 'TOKEN_MISMATCH'>('CHECKING');
 
   // Validate candidate session
   useEffect(() => {
-    const session = getCandidateSession(token);
-    if (!session) {
-      setSessionMissing(true);
-    }
+    if (!token) return;
+    const inspection = inspectCandidateSession(token);
+    setSessionState(inspection.status);
   }, [token]);
 
   const startDeviceCheck = useCallback(async () => {
@@ -74,12 +73,14 @@ export default function CandidateDeviceCheckPage() {
   }, []);
 
   useEffect(() => {
-    startDeviceCheck();
+    if (sessionState === 'VALID') {
+      startDeviceCheck();
+    }
     return () => {
       // Cleanup media on unmount
       streamRef.current?.getTracks().forEach((t) => t.stop());
     };
-  }, [startDeviceCheck]);
+  }, [sessionState, startDeviceCheck]);
 
   const handleJoin = () => {
     // Keep stream alive — it will be picked up by the room page
@@ -117,20 +118,77 @@ export default function CandidateDeviceCheckPage() {
     }
   };
 
-  if (sessionMissing) {
+  if (sessionState === 'CHECKING') {
     return (
       <div className="min-h-screen bg-[#07080c] text-white flex items-center justify-center p-4">
-        <div className="max-w-md w-full rounded-2xl border border-zinc-800 bg-[#0d0e14] p-8 text-center space-y-4">
-          <AlertCircle className="h-10 w-10 text-rose-400 mx-auto" />
+        <Loader2 className="h-8 w-8 animate-spin text-indigo-400" />
+      </div>
+    );
+  }
+
+  if (sessionState === 'MISSING') {
+    return (
+      <div className="min-h-screen bg-[#07080c] text-white flex items-center justify-center p-4">
+        <div className="max-w-md w-full rounded-2xl border border-zinc-800 bg-[#0d0e14] p-8 text-center space-y-4 shadow-2xl">
+          <div className="h-12 w-12 rounded-full bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center mx-auto">
+            <AlertCircle className="h-6 w-6 text-indigo-400" />
+          </div>
+          <h1 className="text-lg font-bold">Identity Verification Required</h1>
+          <p className="text-sm text-zinc-400">
+            Please confirm your name before proceeding to the device check.
+          </p>
+          <button
+            onClick={() => router.push(`/join/${token}/identity`)}
+            className="w-full flex items-center justify-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 px-6 py-3.5 text-sm font-bold text-white transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
+          >
+            Confirm Identity →
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (sessionState === 'EXPIRED') {
+    return (
+      <div className="min-h-screen bg-[#07080c] text-white flex items-center justify-center p-4">
+        <div className="max-w-md w-full rounded-2xl border border-zinc-800 bg-[#0d0e14] p-8 text-center space-y-4 shadow-2xl">
+          <div className="h-12 w-12 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center justify-center mx-auto">
+            <AlertCircle className="h-6 w-6 text-rose-400" />
+          </div>
           <h1 className="text-lg font-bold">Session Expired</h1>
           <p className="text-sm text-zinc-400">
-            Your session has expired or is invalid. Please rejoin using your interview link.
+            Your candidate session has expired. Please rejoin using your interview link.
           </p>
           <button
             onClick={() => router.push(`/join/${token}`)}
-            className="text-sm text-indigo-400 hover:text-indigo-300"
+            className="w-full flex items-center justify-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 px-6 py-3.5 text-sm font-bold text-white transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
           >
-            ← Back to interview
+            ← Back to Interview
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (sessionState === 'TOKEN_MISMATCH') {
+    return (
+      <div className="min-h-screen bg-[#07080c] text-white flex items-center justify-center p-4">
+        <div className="max-w-md w-full rounded-2xl border border-zinc-800 bg-[#0d0e14] p-8 text-center space-y-4 shadow-2xl">
+          <div className="h-12 w-12 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mx-auto">
+            <AlertCircle className="h-6 w-6 text-amber-400" />
+          </div>
+          <h1 className="text-lg font-bold">Session Mismatch</h1>
+          <p className="text-sm text-zinc-400">
+            Your session belongs to a different interview link. Please restart your session.
+          </p>
+          <button
+            onClick={() => {
+              clearCandidateSession(token);
+              router.push(`/join/${token}/identity`);
+            }}
+            className="w-full flex items-center justify-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 px-6 py-3.5 text-sm font-bold text-white transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
+          >
+            Start Fresh Session →
           </button>
         </div>
       </div>

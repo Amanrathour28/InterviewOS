@@ -60,10 +60,13 @@ export default function CandidateLandingPage() {
 
   const handleContinue = () => {
     if (!info) return;
-    if (info.requires_identity) {
-      router.push(`/join/${token}/identity`);
-    } else {
+    // If candidate already has an active session token, proceed to device check
+    const existing = getCandidateSession(token);
+    if (existing) {
       router.push(`/join/${token}/device-check`);
+    } else {
+      // Must submit identity to obtain candidate session token
+      router.push(`/join/${token}/identity`);
     }
   };
 
