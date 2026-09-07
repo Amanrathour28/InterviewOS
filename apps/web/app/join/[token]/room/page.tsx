@@ -39,6 +39,7 @@ import { ChatPanel } from '@/components/interview-room/chat/chat-panel';
 import { CodingWorkspace } from '@/components/interview-room/coding/coding-workspace';
 import { WhiteboardWorkspace } from '@/components/interview-room/whiteboard/whiteboard-workspace';
 import { VideoTile } from '@/components/interview-room/video-tile';
+import { SessionHealthIndicator } from '@/components/interview-room/control-center/session-health-indicator';
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL ||
@@ -494,29 +495,14 @@ export default function CandidateRoomPage() {
           </span>
         </div>
 
-        {/* Realtime Connection Status Indicator */}
+        {/* Realtime Connection Status & Diagnostics */}
         <div className="flex items-center gap-2">
-          <div
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border ${
-              connectionState === 'connected'
-                ? 'border-emerald-500/30 bg-emerald-950/20 text-emerald-400'
-                : connectionState === 'reconnecting' || connectionState === 'connecting'
-                ? 'border-amber-500/30 bg-amber-950/20 text-amber-400'
-                : 'border-rose-500/30 bg-rose-950/20 text-rose-400'
-            }`}
-            title={`Realtime Status: ${connectionState}`}
-          >
-            <span
-              className={`h-2 w-2 rounded-full ${
-                connectionState === 'connected'
-                  ? 'bg-emerald-400 animate-pulse'
-                  : connectionState === 'reconnecting' || connectionState === 'connecting'
-                  ? 'bg-amber-400 animate-ping'
-                  : 'bg-rose-400'
-              }`}
-            />
-            <span className="hidden sm:inline capitalize">{connectionState}</span>
-          </div>
+          <SessionHealthIndicator
+            connectionState={connectionState}
+            activeParticipantsCount={remotePeerList.length + 1}
+            webrtcState={remotePeerList[0]?.connState}
+            remoteVideoReceived={remotePeerList.some((p) => Boolean(p.stream))}
+          />
 
           {candidateName && (
             <div className="min-w-0 max-w-[120px] sm:max-w-[180px] text-center hidden md:block">

@@ -639,6 +639,8 @@ export default function InterviewRoomPage() {
             connectionState={connectionState}
             isPaused={session.status === 'paused'}
             activeParticipantsCount={participants.length}
+            webrtcState={Object.values(remoteStreams)[0]?.connectionState}
+            remoteVideoReceived={Object.values(remoteStreams).some((r: any) => Boolean(r.stream))}
           />
 
           <Button
