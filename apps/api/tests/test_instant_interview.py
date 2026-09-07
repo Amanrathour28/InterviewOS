@@ -635,3 +635,87 @@ async def test_duration_validation(client: AsyncClient, db_session):
             headers=_auth_headers(user.id),
         )
         assert resp.status_code == 422, f"Expected 422 for duration={bad_duration}"
+
+
+# ---------------------------------------------------------------------------
+# Tests: POST /api/v1/interviews/join/{token}/room-session
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_candidate_room_session_requires_auth(client: AsyncClient, db_session):
+    """Room session endpoint must reject unauthenticated requests with 401."""
+    resp = await client.post("/api/v1/interviews/join/some-token/room-session")
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_candidate_room_session_success(client: AsyncClient, db_session):
+    """Candidate can retrieve room session, session_id, join token, and ice servers."""
+    user, ws, org = await _create_user_workspace(db_session)
+    await db_session.commit()
+
+    create_resp = await client.post(
+        "/api/v1/interviews/instant",
+        json={"workspace_id": str(ws.id), "interview_type": "technical", "duration_minutes": 60},
+        headers=_auth_headers(user.id),
+    )
+    assert create_resp.status_code == 201
+    token = create_resp.json()["token"]
+
+    identity_resp = await client.post(
+        f"/api/v1/interviews/join/{token}/identity",
+        json={"name": "Live Candidate", "email": "live@example.test"},
+    )
+    assert identity_resp.status_code == 200
+    candidate_token = identity_resp.json()["candidate_session_token"]
+
+    room_resp = await client.post(
+        f"/api/v1/interviews/join/{token}/room-session",
+        headers={"Authorization": f"Bearer {candidate_token}"},
+    )
+    assert room_resp.status_code == 200, room_resp.text
+    room_data = room_resp.json()
+
+    assert "session_id" in room_data
+    assert "candidate_join_token" in room_data
+    assert "ice_servers" in room_data
+    assert "realtime_url" in room_data
+    assert room_data["role"] == "candidate"
+    assert room_data["is_interviewer"] is False
+    assert room_data["user_name"] == "Live Candidate"
+    assert room_data["user_id"].startswith("candidate-")
+
+
+@pytest.mark.asyncio
+async def test_candidate_room_session_unrelated_interview_rejected(client: AsyncClient, db_session):
+    """Candidate session from Interview A cannot access room-session for Interview B."""
+    user, ws, org = await _create_user_workspace(db_session)
+    await db_session.commit()
+
+    # Interview A
+    resp_a = await client.post(
+        "/api/v1/interviews/instant",
+        json={"workspace_id": str(ws.id), "interview_type": "technical", "duration_minutes": 60},
+        headers=_auth_headers(user.id),
+    )
+    token_a = resp_a.json()["token"]
+    id_resp_a = await client.post(
+        f"/api/v1/interviews/join/{token_a}/identity",
+        json={"name": "Candidate A"},
+    )
+    token_cand_a = id_resp_a.json()["candidate_session_token"]
+
+    # Interview B
+    resp_b = await client.post(
+        "/api/v1/interviews/instant",
+        json={"workspace_id": str(ws.id), "interview_type": "technical", "duration_minutes": 60},
+        headers=_auth_headers(user.id),
+    )
+    token_b = resp_b.json()["token"]
+
+    # Candidate A attempts to access Interview B's room session
+    cross_resp = await client.post(
+        f"/api/v1/interviews/join/{token_b}/room-session",
+        headers={"Authorization": f"Bearer {token_cand_a}"},
+    )
+    assert cross_resp.status_code == 403

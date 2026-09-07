@@ -10,7 +10,7 @@ import hashlib
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr, Field
@@ -19,7 +19,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_candidate_session, get_current_user, get_db, verify_workspace_access
+from app.core.config import settings
 from app.core.security import create_candidate_session_token, hash_token
+from app.services.session_service import session_service
 from app.models.candidate import Candidate, CandidateSource, CandidateStatus
 from app.models.interview import Interview, InterviewDifficulty, InterviewStatus, InterviewType
 from app.models.scheduling import InterviewInvitation, InvitationStatus, RecipientType
@@ -74,6 +76,19 @@ class CandidateSessionResponse(BaseModel):
 class InterviewStatusResponse(BaseModel):
     interview_started: bool
     interview_status: str
+
+
+class CandidateRoomSessionResponse(BaseModel):
+    session_id: uuid.UUID
+    room_id: str
+    candidate_join_token: str
+    user_id: str
+    user_name: str
+    role: str = "candidate"
+    is_interviewer: bool = False
+    expires_in_seconds: int
+    realtime_url: str
+    ice_servers: List[Dict[str, Any]]
 
 
 # ---------------------------------------------------------------------------
@@ -509,4 +524,90 @@ async def get_join_status(
     return InterviewStatusResponse(
         interview_started=started,
         interview_status=itw.status.value,
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /interviews/join/{token}/room-session — candidate session protected
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/interviews/join/{token}/room-session",
+    response_model=CandidateRoomSessionResponse,
+    summary="Retrieve active session and generate candidate join token for realtime/WebRTC",
+    tags=["Candidate Join"],
+)
+async def get_candidate_room_session(
+    token: str,
+    candidate_claims: Dict[str, Any] = Depends(get_candidate_session),
+    db: AsyncSession = Depends(get_db),
+) -> CandidateRoomSessionResponse:
+    """Candidate-session protected.
+
+    Retrieves or establishes the live interview session and generates a secure
+    candidate join token for the Socket.IO realtime gateway and WebRTC signaling.
+    """
+    token_hash = _sha256(token)
+    stmt = (
+        select(InterviewInvitation)
+        .where(InterviewInvitation.token_hash == token_hash)
+        .options(selectinload(InterviewInvitation.interview))
+    )
+    res = await db.execute(stmt)
+    invitation = res.scalar_one_or_none()
+
+    if not invitation:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Interview not found.",
+        )
+
+    claimed_interview_id = candidate_claims.get("interview_id")
+    if str(invitation.interview_id) != claimed_interview_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to access this interview.",
+        )
+
+    itw = invitation.interview
+    if not itw or itw.is_deleted or itw.status in [
+        InterviewStatus.CANCELLED,
+        InterviewStatus.COMPLETED,
+    ]:
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="This interview is no longer active.",
+        )
+
+    # Get or create active session
+    creator_id = itw.created_by or uuid.uuid4()
+    session = await session_service.get_or_create_session(
+        interview=itw,
+        workspace_id=itw.workspace_id,
+        user_id=creator_id,
+        db=db,
+    )
+
+    cand_name = invitation.candidate_name or candidate_claims.get("candidate_name") or "Candidate"
+    join_token, expires_in = session_service.generate_candidate_join_token(
+        session=session,
+        invitation_id=str(invitation.id),
+        candidate_name=cand_name,
+        candidate_email=invitation.candidate_email,
+    )
+
+    ice_servers = session_service.get_ice_servers()
+    realtime_url = getattr(settings, "REALTIME_URL", "http://localhost:4000")
+
+    return CandidateRoomSessionResponse(
+        session_id=session.id,
+        room_id=f"interview:{session.id}",
+        candidate_join_token=join_token,
+        user_id=f"candidate-{invitation.id}",
+        user_name=cand_name,
+        role="candidate",
+        is_interviewer=False,
+        expires_in_seconds=expires_in,
+        realtime_url=realtime_url,
+        ice_servers=ice_servers,
     )

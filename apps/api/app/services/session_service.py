@@ -568,6 +568,37 @@ class InterviewSessionService:
         token = jwt.encode(payload, settings.SECRET_KEY, algorithm=JWT_ALGORITHM)
         return token, expires_seconds
 
+    def generate_candidate_join_token(
+        self,
+        session: InterviewSession,
+        invitation_id: str,
+        candidate_name: str,
+        candidate_email: Optional[str] = None,
+    ) -> Tuple[str, int]:
+        """Generates a secure, short-lived JWT token for candidate WebSocket gateway handshake."""
+        expires_seconds = 3600  # 1 hour
+        expire_at = datetime.now(timezone.utc) + timedelta(seconds=expires_seconds)
+
+        payload = {
+            "sub": f"candidate:{invitation_id}",
+            "user_id": f"candidate-{invitation_id}",
+            "user_name": candidate_name or "Candidate",
+            "user_email": candidate_email or "",
+            "session_id": str(session.id),
+            "interview_id": str(session.interview_id),
+            "workspace_id": str(session.workspace_id),
+            "invitation_id": str(invitation_id),
+            "role": "candidate",
+            "type": "candidate_session",
+            "scope": "candidate",
+            "is_interviewer": False,
+            "exp": expire_at,
+            "iat": datetime.now(timezone.utc),
+        }
+
+        token = jwt.encode(payload, settings.SECRET_KEY, algorithm=JWT_ALGORITHM)
+        return token, expires_seconds
+
     def get_ice_servers(self) -> List[Dict[str, Any]]:
         """Returns standard WebRTC STUN/TURN ICE server configuration."""
         servers = []

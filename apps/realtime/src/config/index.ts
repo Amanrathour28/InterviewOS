@@ -9,7 +9,7 @@ export const config = {
   apiUrl: process.env.API_URL || 'http://localhost:8000/api/v1',
   corsOrigins: process.env.CORS_ORIGINS
     ? process.env.CORS_ORIGINS.split(',')
-    : ['http://localhost:3000', 'http://127.0.0.1:3000'],
+    : ['http://localhost:3000', 'http://127.0.0.1:3000', 'https://interviewos-nine.vercel.app'],
   heartbeatIntervalMs: 30000,
   heartbeatTimeoutMs: 60000,
 };

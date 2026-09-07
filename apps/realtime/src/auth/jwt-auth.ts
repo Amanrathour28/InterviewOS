@@ -25,6 +25,19 @@ export function authenticateSocket(socket: Socket, next: (err?: Error) => void) 
       return next(new Error('INVALID_TOKEN_CLAIMS: Required session_id and user_id claims missing'));
     }
 
+    // Role & authorization boundaries
+    let isInterviewer = Boolean(decoded.is_interviewer);
+    let role = String(decoded.role || (isInterviewer ? 'interviewer' : 'candidate'));
+
+    // Candidate token safety check: candidate tokens MUST NOT claim interviewer status
+    if (decoded.type === 'candidate_session') {
+      if (decoded.scope !== 'candidate' || isInterviewer || role !== 'candidate') {
+        return next(new Error('FORBIDDEN: Candidate token cannot claim interviewer role'));
+      }
+      isInterviewer = false;
+      role = 'candidate';
+    }
+
     // 3. Attach user context to socket.data
     const user: SocketUser = {
       userId: String(decoded.user_id),
@@ -33,8 +46,8 @@ export function authenticateSocket(socket: Socket, next: (err?: Error) => void) 
       sessionId: String(decoded.session_id),
       interviewId: String(decoded.interview_id || ''),
       workspaceId: String(decoded.workspace_id || ''),
-      role: String(decoded.role || 'candidate'),
-      isInterviewer: Boolean(decoded.is_interviewer),
+      role,
+      isInterviewer,
     };
 
     socket.data.user = user;
