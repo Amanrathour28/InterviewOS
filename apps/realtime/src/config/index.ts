@@ -4,7 +4,7 @@ dotenv.config();
 
 export const config = {
   port: parseInt(process.env.PORT || '4000', 10),
-  jwtSecretKey: process.env.JWT_SECRET_KEY || process.env.SECRET_KEY || 'dev-secret-key-32-chars-interviewos-platform-security',
+  jwtSecretKey: (process.env.JWT_SECRET_KEY || process.env.SECRET_KEY || 'dev-secret-key-32-chars-interviewos-platform-security').trim(),
   redisUrl: process.env.REDIS_URL || '',
   apiUrl: process.env.API_URL || 'http://localhost:8000/api/v1',
   corsOrigins: process.env.CORS_ORIGINS

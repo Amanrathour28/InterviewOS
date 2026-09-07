@@ -17,9 +17,32 @@ export function authenticateSocket(socket: Socket, next: (err?: Error) => void) 
     }
 
     // 2. Verify JWT with secret key
-    const decoded = jwt.verify(token, config.jwtSecretKey, {
-      algorithms: ['HS256'],
-    }) as any;
+    const rawSecret = process.env.JWT_SECRET_KEY || process.env.SECRET_KEY || config.jwtSecretKey;
+    const candidateSecrets = Array.from(
+      new Set([
+        config.jwtSecretKey,
+        config.jwtSecretKey.trim(),
+        rawSecret,
+        rawSecret.trim(),
+        `${rawSecret.trim()}\n`,
+        `${rawSecret.trim()}\r\n`,
+      ])
+    ).filter(Boolean);
+
+    let decoded: any = null;
+    let verifyError: any = null;
+    for (const sec of candidateSecrets) {
+      try {
+        decoded = jwt.verify(token, sec, { algorithms: ['HS256'] });
+        break;
+      } catch (err: any) {
+        verifyError = err;
+      }
+    }
+
+    if (!decoded) {
+      throw verifyError || new Error('Verification failed');
+    }
 
     if (!decoded || !decoded.session_id || !decoded.user_id) {
       return next(new Error('INVALID_TOKEN_CLAIMS: Required session_id and user_id claims missing'));
