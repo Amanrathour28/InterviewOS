@@ -27,6 +27,7 @@ interface VideoTileProps {
   activeSpeaker?: boolean;
   networkQuality?: NetworkQuality;
   connectionState?: string;
+  mediaError?: string | null;
   className?: string;
 }
 
@@ -42,19 +43,52 @@ export const VideoTile: React.FC<VideoTileProps> = ({
   activeSpeaker = false,
   networkQuality = 'good',
   connectionState = 'connected',
+  mediaError = null,
   className = '',
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
 
+  // Robust video stream attachment and diagnostic logging
   useEffect(() => {
-    if (videoRef.current) {
-      if (stream) {
-        videoRef.current.srcObject = stream;
-      } else {
-        videoRef.current.srcObject = null;
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (cameraEnabled && stream) {
+      const vTracks = stream.getVideoTracks();
+      const aTracks = stream.getAudioTracks();
+      console.log(`[Media] video tracks count: ${vTracks.length}, audio tracks count: ${aTracks.length}`);
+      if (vTracks.length > 0) {
+        console.log(`[Media] video track readyState: ${vTracks[0].readyState}, enabled: ${vTracks[0].enabled}`);
+      }
+
+      if (video.srcObject !== stream) {
+        video.srcObject = stream;
+        console.log(`[Media] video element attached for ${userName || userId} (local: ${isLocal})`);
+      }
+
+      const handleLoadedMetadata = () => {
+        console.log(`[Media] video element dimensions: ${video.videoWidth}x${video.videoHeight}`);
+      };
+      video.addEventListener('loadedmetadata', handleLoadedMetadata);
+
+      video
+        .play()
+        .then(() => {
+          console.log(`[Media] video play success for ${userName || userId}`);
+        })
+        .catch((err) => {
+          console.warn(`[Media] video play failure for ${userName || userId}:`, err);
+        });
+
+      return () => {
+        video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      };
+    } else {
+      if (video.srcObject) {
+        video.srcObject = null;
       }
     }
-  }, [stream]);
+  }, [stream, cameraEnabled, isLocal, userId, userName]);
 
   const initials = userName
     ? userName
@@ -73,6 +107,13 @@ export const VideoTile: React.FC<VideoTileProps> = ({
     role === 'admin' ||
     role === 'organizer';
 
+  const hasLiveVideo = Boolean(
+    cameraEnabled &&
+    stream &&
+    stream.getVideoTracks().length > 0 &&
+    stream.getVideoTracks().some((t) => t.readyState === 'live')
+  );
+
   return (
     <div
       className={`relative w-full h-full min-h-[160px] sm:min-h-[200px] aspect-video max-h-full rounded-2xl overflow-hidden bg-[#0a0b10] border transition-all duration-300 flex items-center justify-center select-none ${
@@ -82,9 +123,15 @@ export const VideoTile: React.FC<VideoTileProps> = ({
       } ${className}`}
     >
       {/* Video Element */}
-      {cameraEnabled && stream ? (
+      {hasLiveVideo ? (
         <video
-          ref={videoRef}
+          ref={(el) => {
+            (videoRef as any).current = el;
+            if (el && stream && cameraEnabled && el.srcObject !== stream) {
+              el.srcObject = stream;
+              el.play().catch(() => {});
+            }
+          }}
           autoPlay
           playsInline
           muted={isLocal} // Avoid local echo
@@ -93,23 +140,37 @@ export const VideoTile: React.FC<VideoTileProps> = ({
           }`}
         />
       ) : (
-        /* Avatar Fallback */
+        /* Avatar / Error Fallback */
         <div className="flex flex-col items-center justify-center p-6 text-center space-y-3">
           <div
             className={`h-20 w-20 rounded-full flex items-center justify-center text-2xl font-bold border ${
-              isInterviewer
+              mediaError
+                ? 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+                : isInterviewer
                 ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-400'
                 : 'bg-zinc-800 border-zinc-700 text-zinc-200'
             }`}
           >
             {initials}
           </div>
-          <div className="space-y-1">
-            <p className="text-sm font-bold text-white">{userName}</p>
-            <div className="flex items-center justify-center gap-1.5 text-xs text-zinc-500">
-              <CameraOff className="h-3.5 w-3.5 text-zinc-500" />
-              <span>Camera Off</span>
-            </div>
+          <div className="space-y-1 max-w-[220px]">
+            <p className="text-sm font-bold text-white truncate">{userName}</p>
+            {mediaError ? (
+              <div className="flex items-center justify-center gap-1.5 text-xs text-rose-400 font-medium">
+                <CameraOff className="h-3.5 w-3.5 shrink-0" />
+                <span>{mediaError}</span>
+              </div>
+            ) : !cameraEnabled ? (
+              <div className="flex items-center justify-center gap-1.5 text-xs text-zinc-500">
+                <CameraOff className="h-3.5 w-3.5 text-zinc-500" />
+                <span>Camera Off</span>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center gap-1.5 text-xs text-zinc-400">
+                <CameraOff className="h-3.5 w-3.5 text-zinc-500" />
+                <span>{isLocal ? 'Camera unavailable' : 'Waiting for video...'}</span>
+              </div>
+            )}
           </div>
         </div>
       )}

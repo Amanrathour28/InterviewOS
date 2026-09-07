@@ -179,7 +179,34 @@ export default function InterviewRoomPage() {
     devices: MediaDeviceSettings;
   }) => {
     setIsPreJoinDone(true);
-    setLocalStream(setup.stream);
+    let activeStream = setup.stream;
+
+    // Verify stream tracks are live; re-acquire if ended
+    const vTracks = activeStream?.getVideoTracks() || [];
+    const isLive = vTracks.length > 0 && vTracks.some((t) => t.readyState === 'live');
+    if (!isLive && setup.cameraEnabled) {
+      console.log('[Media] Stream tracks ended, re-acquiring fresh local media stream in room...');
+      try {
+        const freshStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            facingMode: 'user',
+          },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+        activeStream = freshStream;
+        console.log('[Media] Successfully re-acquired fresh local media stream');
+      } catch (err: any) {
+        console.warn('[Media] Failed to re-acquire fresh media stream:', err);
+      }
+    }
+
+    setLocalStream(activeStream);
     setIsCameraEnabled(setup.cameraEnabled);
     setIsMicEnabled(setup.micEnabled);
     setDeviceSettings(setup.devices);
@@ -187,9 +214,10 @@ export default function InterviewRoomPage() {
     const joinData = joinDataRef.current;
     if (!joinData || !session) return;
 
-    // Initialize MediaManager
+    // Initialize MediaManager and assign localStream
     const mediaManager = new MediaManager();
     mediaManagerRef.current = mediaManager;
+    mediaManager.setLocalStream(activeStream);
 
     // Initialize PeerConnectionManager with ICE servers from backend
     const peerManager = new PeerConnectionManager({
@@ -200,7 +228,7 @@ export default function InterviewRoomPage() {
       localUserRole: joinData.role || 'candidate',
     });
     peerManagerRef.current = peerManager;
-    peerManager.setLocalStream(setup.stream);
+    peerManager.setLocalStream(activeStream);
 
     // Track replacement wire-up
     mediaManager.setTrackReplacementCallback((kind, newTrack) => {
@@ -436,6 +464,11 @@ export default function InterviewRoomPage() {
     if (mediaManagerRef.current) {
       await mediaManagerRef.current.toggleCamera(newState);
     }
+    if (localStream) {
+      localStream.getVideoTracks().forEach((t) => {
+        t.enabled = newState;
+      });
+    }
     realtimeClientRef.current?.sendMediaState({
       camera: newState,
       microphone: isMicEnabled,
@@ -448,6 +481,11 @@ export default function InterviewRoomPage() {
     setIsMicEnabled(newState);
     if (mediaManagerRef.current) {
       await mediaManagerRef.current.toggleMicrophone(newState);
+    }
+    if (localStream) {
+      localStream.getAudioTracks().forEach((t) => {
+        t.enabled = newState;
+      });
     }
     realtimeClientRef.current?.sendMediaState({
       camera: isCameraEnabled,

@@ -54,6 +54,7 @@ export const DeviceCheckModal: React.FC<DeviceCheckModalProps> = ({
   // Audio level analysis interval & context
   const audioContextRef = useRef<AudioContext | null>(null);
   const animFrameRef = useRef<number | null>(null);
+  const hasJoinedRef = useRef(false);
 
   // Initialize media devices
   useEffect(() => {
@@ -64,6 +65,7 @@ export const DeviceCheckModal: React.FC<DeviceCheckModalProps> = ({
       setErrorMessage(null);
 
       try {
+        console.log('[Media] requesting camera/microphone in DeviceCheckModal');
         // Enumerate devices initially
         const deviceList = await DeviceManager.enumerateDevices();
         setDevices(deviceList);
@@ -82,6 +84,14 @@ export const DeviceCheckModal: React.FC<DeviceCheckModalProps> = ({
           },
         });
 
+        console.log('[Media] getUserMedia success in DeviceCheckModal');
+        const vTracks = userStream.getVideoTracks();
+        const aTracks = userStream.getAudioTracks();
+        console.log(`[Media] video tracks count: ${vTracks.length}, audio tracks count: ${aTracks.length}`);
+        if (vTracks.length > 0) {
+          console.log(`[Media] video track readyState: ${vTracks[0].readyState}, enabled: ${vTracks[0].enabled}`);
+        }
+
         activeStream = userStream;
         setStream(userStream);
 
@@ -93,9 +103,9 @@ export const DeviceCheckModal: React.FC<DeviceCheckModalProps> = ({
         setupAudioMeter(userStream);
       } catch (err: any) {
         console.warn('[DeviceCheck] getUserMedia error:', err);
-        if (err.name === 'NotAllowedError') {
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
           setErrorMessage('Camera or Microphone access was blocked. Please grant permissions in your browser bar.');
-        } else if (err.name === 'NotFoundError') {
+        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
           setErrorMessage('No camera or microphone hardware found on this machine.');
         } else {
           setErrorMessage(err.message || 'Failed to initialize media devices.');
@@ -108,8 +118,12 @@ export const DeviceCheckModal: React.FC<DeviceCheckModalProps> = ({
     init();
 
     return () => {
-      if (activeStream) {
+      // Do NOT stop tracks if the stream is being transferred into the room!
+      if (!hasJoinedRef.current && activeStream) {
+        console.log('[Media] stopping preview stream tracks on DeviceCheckModal unmount (not joined)');
         activeStream.getTracks().forEach((t) => t.stop());
+      } else if (hasJoinedRef.current) {
+        console.log('[Media] transferring stream tracks to interview room');
       }
       if (animFrameRef.current) {
         cancelAnimationFrame(animFrameRef.current);
@@ -235,6 +249,7 @@ export const DeviceCheckModal: React.FC<DeviceCheckModalProps> = ({
 
   const handleJoinClick = () => {
     if (stream) {
+      hasJoinedRef.current = true;
       onJoin({
         stream,
         cameraEnabled,

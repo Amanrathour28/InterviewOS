@@ -78,6 +78,8 @@ export default function CandidateRoomPage() {
   const [currentStage, setCurrentStage] = useState<string>('introduction');
   const [isInterviewEnded, setIsInterviewEnded] = useState(false);
 
+  const [localMediaError, setLocalMediaError] = useState<string | null>(null);
+
   // References for cleanup and signaling
   const streamRef = useRef<MediaStream | null>(null);
   const realtimeClientRef = useRef<RealtimeClient | null>(null);
@@ -97,10 +99,19 @@ export default function CandidateRoomPage() {
     setCandidateName(session.candidateName);
   }, [token]);
 
-  // 2. Start local camera / microphone stream
-  const startMedia = useCallback(async (): Promise<MediaStream | null> => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+  // 2. Independent local media lifecycle: candidate camera preview never depends on room session or socket
+  useEffect(() => {
+    let isMounted = true;
+    console.log('[Media] requesting camera/microphone for CandidateRoom');
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      console.warn('[Media] navigator.mediaDevices.getUserMedia not supported');
+      setLocalMediaError('Media devices not supported');
+      return;
+    }
+
+    navigator.mediaDevices
+      .getUserMedia({
         video: {
           width: { ideal: 1280, max: 1920 },
           height: { ideal: 720, max: 1080 },
@@ -112,14 +123,44 @@ export default function CandidateRoomPage() {
           noiseSuppression: true,
           autoGainControl: true,
         },
+      })
+      .then((stream) => {
+        if (!isMounted) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        console.log('[Media] getUserMedia success for CandidateRoom');
+        const vTracks = stream.getVideoTracks();
+        const aTracks = stream.getAudioTracks();
+        console.log(`[Media] video tracks count: ${vTracks.length}, audio tracks count: ${aTracks.length}`);
+        if (vTracks.length > 0) {
+          console.log(`[Media] video track readyState: ${vTracks[0].readyState}, enabled: ${vTracks[0].enabled}`);
+        }
+
+        streamRef.current = stream;
+        setLocalStream(stream);
+        setLocalMediaError(null);
+
+        if (peerManagerRef.current) {
+          peerManagerRef.current.setLocalStream(stream);
+        }
+      })
+      .catch((err: any) => {
+        console.warn('[Media] Candidate media error:', err);
+        if (!isMounted) return;
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          setLocalMediaError('Camera permission denied');
+        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+          setLocalMediaError('No camera detected');
+        } else {
+          setLocalMediaError('Camera unavailable');
+        }
       });
-      streamRef.current = stream;
-      setLocalStream(stream);
-      return stream;
-    } catch (err: any) {
-      console.warn('[CandidateRoom] Media access denied or unavailable:', err.message);
-      return null;
-    }
+
+    return () => {
+      isMounted = false;
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+    };
   }, []);
 
   // 3. Establish candidate room session, WebRTC, and Realtime Socket.IO
@@ -164,10 +205,6 @@ export default function CandidateRoomPage() {
           setApiAuthToken(roomData.candidate_join_token);
         }
 
-        // Capture local media stream
-        const mediaStream = await startMedia();
-        if (!isSubscribed) return;
-
         // Initialize WebRTC PeerConnectionManager
         const peerManager = new PeerConnectionManager({
           iceServers: roomData.ice_servers || [{ urls: 'stun:stun.l.google.com:19302' }],
@@ -178,8 +215,8 @@ export default function CandidateRoomPage() {
         });
         peerManagerRef.current = peerManager;
 
-        if (mediaStream) {
-          peerManager.setLocalStream(mediaStream);
+        if (streamRef.current) {
+          peerManager.setLocalStream(streamRef.current);
         }
 
         // Determine correct realtime URL
@@ -335,12 +372,11 @@ export default function CandidateRoomPage() {
 
     return () => {
       isSubscribed = false;
-      streamRef.current?.getTracks().forEach((t) => t.stop());
       peerManagerRef.current?.closeAll();
       realtimeClientRef.current?.disconnect();
       setApiAuthToken(null);
     };
-  }, [interviewId, token, startMedia]);
+  }, [interviewId, token]);
 
   // Toggle Microphone
   const toggleMic = () => {
@@ -552,6 +588,7 @@ export default function CandidateRoomPage() {
                 isLocal
                 cameraEnabled={isCameraEnabled}
                 microphoneEnabled={isMicEnabled}
+                mediaError={localMediaError}
               />
 
               {/* Remote (interviewer) video or waiting state */}

@@ -52,6 +52,10 @@ export class MediaManager {
     }
   }
 
+  setLocalStream(stream: MediaStream | null) {
+    this.localStream = stream;
+  }
+
   getLocalStream(): MediaStream | null {
     return this.localStream;
   }

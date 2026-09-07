@@ -179,11 +179,17 @@ export class PeerConnectionManager {
 
     // 3. Track received from remote peer
     pc.ontrack = (event) => {
-      event.streams[0]?.getTracks().forEach((track) => {
-        if (!peer.remoteStream.getTracks().some((t) => t.id === track.id)) {
-          peer.remoteStream.addTrack(track);
-        }
-      });
+      console.log(`[WebRTC Peer ${userId}] Remote track received: kind=${event.track.kind}, id=${event.track.id}, readyState=${event.track.readyState}`);
+      if (event.streams && event.streams[0]) {
+        event.streams[0].getTracks().forEach((track) => {
+          if (!peer.remoteStream.getTracks().some((t) => t.id === track.id)) {
+            peer.remoteStream.addTrack(track);
+          }
+        });
+      }
+      if (event.track && !peer.remoteStream.getTracks().some((t) => t.id === event.track.id)) {
+        peer.remoteStream.addTrack(event.track);
+      }
 
       this.setupAudioAnalysis(peer);
       this.onRemoteStreamAdded?.(userId, peer.remoteStream);
@@ -191,6 +197,7 @@ export class PeerConnectionManager {
 
     // 4. Connection State change
     pc.onconnectionstatechange = () => {
+      console.log(`[WebRTC Peer ${userId}] pc.connectionState changed to: ${pc.connectionState}`);
       this.onPeerConnectionChanged?.(userId, pc.connectionState, pc.iceConnectionState);
       if (pc.connectionState === 'failed') {
         this.restartIce(userId);
@@ -199,6 +206,7 @@ export class PeerConnectionManager {
 
     // 5. ICE Connection State change
     pc.oniceconnectionstatechange = () => {
+      console.log(`[WebRTC Peer ${userId}] pc.iceConnectionState changed to: ${pc.iceConnectionState}`);
       this.onPeerConnectionChanged?.(userId, pc.connectionState, pc.iceConnectionState);
       if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
         this.restartIce(userId);
