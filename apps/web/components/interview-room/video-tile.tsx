@@ -75,7 +75,7 @@ export const VideoTile: React.FC<VideoTileProps> = ({
 
   return (
     <div
-      className={`relative w-full h-full min-h-[220px] rounded-2xl overflow-hidden bg-[#0a0b10] border transition-all duration-300 flex items-center justify-center select-none ${
+      className={`relative w-full h-full min-h-[160px] sm:min-h-[200px] aspect-video max-h-full rounded-2xl overflow-hidden bg-[#0a0b10] border transition-all duration-300 flex items-center justify-center select-none ${
         activeSpeaker
           ? 'border-emerald-500 ring-2 ring-emerald-500/50 shadow-lg shadow-emerald-500/20'
           : 'border-zinc-800/80 hover:border-zinc-700'

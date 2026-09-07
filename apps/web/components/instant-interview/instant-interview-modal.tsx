@@ -87,10 +87,14 @@ export function InstantInterviewModal({ isOpen, onClose }: InstantInterviewModal
     }
   };
 
+  const effectiveJoinUrl = typeof window !== 'undefined' && result?.token
+    ? `${window.location.origin}/join/${result.token}`
+    : (result?.join_url || '');
+
   const handleCopy = async () => {
-    if (!result) return;
+    if (!effectiveJoinUrl) return;
     try {
-      await navigator.clipboard.writeText(result.join_url);
+      await navigator.clipboard.writeText(effectiveJoinUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     } catch {
@@ -280,7 +284,7 @@ export function InstantInterviewModal({ isOpen, onClose }: InstantInterviewModal
                 </span>
                 <div className="flex items-center gap-2">
                   <div className="flex-1 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs font-mono text-indigo-300 truncate select-all">
-                    {result.join_url}
+                    {effectiveJoinUrl}
                   </div>
                   <button
                     id="instant-interview-copy-btn"

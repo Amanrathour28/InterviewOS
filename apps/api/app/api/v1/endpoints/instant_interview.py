@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -84,26 +84,49 @@ def _sha256(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-def _build_join_url(token: str) -> str:
+def _build_join_url(token: str, request: Optional[Request] = None) -> str:
     """Build a frontend join URL.
 
-    Resolution order (first non-localhost value wins):
-    1. settings.APP_URL          — set via APP_URL env var on Vercel
-    2. NEXT_PUBLIC_APP_URL       — Vercel typically sets this for Next.js
-    3. http://localhost:3000     — safe local fallback
-
-    This ensures that deployments which only configure NEXT_PUBLIC_APP_URL
-    still generate correct shareable join links.
+    Resolution order:
+    1. request.headers origin / x-forwarded-host (exact host current user is on)
+    2. VERCEL_PROJECT_PRODUCTION_URL (e.g. interviewos-nine.vercel.app)
+    3. VERCEL_URL
+    4. settings.APP_URL          — set via APP_URL env var on Vercel
+    5. NEXT_PUBLIC_APP_URL       — Vercel typically sets this for Next.js
+    6. http://localhost:3000     — safe local fallback
     """
     import os
-    from app.core.config import settings  # local import to avoid circular
+    from app.core.config import settings
 
     localhost_prefixes = ("http://localhost", "http://127.0.0.1")
+    base = ""
 
-    base = getattr(settings, "APP_URL", "").rstrip("/")
+    if request:
+        origin = request.headers.get("origin", "").rstrip("/")
+        if origin and not any(origin.startswith(p) for p in localhost_prefixes):
+            base = origin
+        elif not base:
+            fwd_host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+            if fwd_host and not any(fwd_host.startswith(p) for p in ("localhost", "127.0.0.1")):
+                fwd_proto = request.headers.get("x-forwarded-proto", "https")
+                base = f"{fwd_proto}://{fwd_host}".rstrip("/")
+
     if not base or any(base.startswith(p) for p in localhost_prefixes):
-        # Try the NEXT_PUBLIC_APP_URL env var as fallback (set by Vercel for Next.js)
+        vercel_prod = os.environ.get("VERCEL_PROJECT_PRODUCTION_URL", "").strip()
+        if vercel_prod:
+            base = f"https://{vercel_prod}".rstrip("/")
+
+    if not base or any(base.startswith(p) for p in localhost_prefixes):
+        vercel_url = os.environ.get("VERCEL_URL", "").strip()
+        if vercel_url:
+            base = f"https://{vercel_url}".rstrip("/")
+
+    if not base or any(base.startswith(p) for p in localhost_prefixes):
+        base = getattr(settings, "APP_URL", "").rstrip("/")
+
+    if not base or any(base.startswith(p) for p in localhost_prefixes):
         base = os.environ.get("NEXT_PUBLIC_APP_URL", "").rstrip("/")
+
     if not base or any(base.startswith(p) for p in localhost_prefixes):
         base = "http://localhost:3000"
 
@@ -123,6 +146,7 @@ def _build_join_url(token: str) -> str:
 )
 async def create_instant_interview(
     payload: InstantInterviewRequest,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> InstantInterviewResponse:
@@ -223,7 +247,7 @@ async def create_instant_interview(
     await db.commit()
     await db.refresh(new_interview)
 
-    join_url = _build_join_url(raw_token)
+    join_url = _build_join_url(raw_token, request=request)
 
     return InstantInterviewResponse(
         interview_id=new_interview.id,

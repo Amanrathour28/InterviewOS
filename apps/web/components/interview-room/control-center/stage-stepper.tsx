@@ -62,8 +62,10 @@ export const StageStepper: React.FC<StageStepperProps> = ({
                   {idx + 1}
                 </span>
               )}
-              <span className="hidden sm:inline">{stage.label}</span>
-              <span className="sm:hidden">{stage.shortLabel}</span>
+              <span className="hidden xl:inline">{stage.label}</span>
+              <span className={`hidden md:inline xl:hidden ${isCurrent ? '!inline font-bold' : ''}`}>
+                {stage.shortLabel}
+              </span>
             </button>
 
             {idx < INTERVIEW_STAGES.length - 1 && (

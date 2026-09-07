@@ -31,7 +31,9 @@ import { CodingWorkspace } from '@/components/interview-room/coding/coding-works
 import { WhiteboardWorkspace } from '@/components/interview-room/whiteboard/whiteboard-workspace';
 import { VideoTile } from '@/components/interview-room/video-tile';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== 'undefined' ? '/api/v1' : 'http://127.0.0.1:8000/api/v1');
 
 type CandidateTab = 'video' | 'code' | 'whiteboard' | 'chat';
 
@@ -169,28 +171,32 @@ export default function CandidateRoomPage() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-[#07080c] text-white overflow-hidden">
+    <div className="flex flex-col h-screen w-screen bg-[#07080c] text-white overflow-hidden select-none">
       {/* Header */}
-      <header className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-zinc-800 bg-[#09090b]/80 backdrop-blur-md">
-        <div className="flex items-center gap-2">
-          <div className="h-7 w-7 rounded-lg bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+      <header className="h-12 shrink-0 flex items-center justify-between px-3.5 border-b border-zinc-800 bg-[#09090b]/90 backdrop-blur-md z-10 gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="h-7 w-7 rounded-lg bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
             <Terminal className="h-3.5 w-3.5" />
           </div>
-          <span className="font-bold text-xs">
+          <span className="font-bold text-xs shrink-0">
             Interview<span className="text-indigo-400 font-black">OS</span>
           </span>
+          <span className="text-zinc-700 hidden sm:inline">•</span>
+          <span className="text-xs text-indigo-400 font-mono hidden sm:inline truncate">Live Assessment</span>
         </div>
 
         {candidateName && (
-          <span className="text-xs text-zinc-400 font-medium">{candidateName}</span>
+          <div className="min-w-0 max-w-[140px] sm:max-w-[200px] text-center">
+            <span className="text-xs text-zinc-300 font-medium truncate block">{candidateName}</span>
+          </div>
         )}
 
-        {/* Media controls */}
-        <div className="flex items-center gap-2">
+        {/* Media controls & leave */}
+        <div className="flex items-center gap-1.5 shrink-0">
           <button
             onClick={toggleMic}
             title={isMicEnabled ? 'Mute microphone' : 'Unmute microphone'}
-            className={`p-1.5 rounded-lg border transition-colors ${
+            className={`p-2 rounded-lg border transition-colors ${
               isMicEnabled
                 ? 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:border-zinc-600'
                 : 'border-rose-500/40 bg-rose-950/30 text-rose-400'
@@ -201,7 +207,7 @@ export default function CandidateRoomPage() {
           <button
             onClick={toggleCamera}
             title={isCameraEnabled ? 'Turn off camera' : 'Turn on camera'}
-            className={`p-1.5 rounded-lg border transition-colors ${
+            className={`p-2 rounded-lg border transition-colors ${
               isCameraEnabled
                 ? 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:border-zinc-600'
                 : 'border-rose-500/40 bg-rose-950/30 text-rose-400'
@@ -215,34 +221,34 @@ export default function CandidateRoomPage() {
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-500/30 bg-rose-950/20 text-rose-400 hover:bg-rose-950/40 text-xs font-semibold transition-colors"
           >
             <LogOut className="h-3.5 w-3.5" />
-            Leave
+            <span className="hidden sm:inline">Leave</span>
           </button>
         </div>
       </header>
 
       {/* Tab bar */}
-      <div className="shrink-0 flex items-center gap-1 px-4 py-2 border-b border-zinc-800 bg-[#09090b]">
+      <div className="h-9 shrink-0 flex items-center gap-1 px-3 border-b border-zinc-800 bg-[#09090b] overflow-x-auto no-scrollbar">
         {tabs.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => setActiveTab(id)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
               activeTab === id
-                ? 'bg-zinc-800 text-white'
+                ? 'bg-zinc-800 text-white font-bold shadow-sm'
                 : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'
             }`}
           >
-            <Icon className="h-3.5 w-3.5" />
+            <Icon className="h-3.5 w-3.5 text-indigo-400" />
             {label}
           </button>
         ))}
       </div>
 
       {/* Main content area */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 min-h-0 min-w-0 overflow-hidden relative flex flex-col">
         {activeTab === 'video' && (
-          <div className="h-full flex items-center justify-center p-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-3xl">
+          <div className="flex-1 min-h-0 p-3 sm:p-4 overflow-y-auto flex items-center justify-center">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 w-full max-w-4xl h-full max-h-[calc(100vh-180px)]">
               {/* Local (candidate) video */}
               <VideoTile
                 userId={`candidate-${token}`}
@@ -254,14 +260,14 @@ export default function CandidateRoomPage() {
                 microphoneEnabled={isMicEnabled}
               />
               {/* Remote (interviewer) placeholder */}
-              <div className="aspect-video rounded-xl border border-zinc-800 bg-zinc-900 flex items-center justify-center">
-                <div className="text-center space-y-2">
+              <div className="aspect-video w-full h-full min-h-[160px] sm:min-h-[200px] rounded-2xl border border-zinc-800 bg-zinc-900 flex items-center justify-center">
+                <div className="text-center space-y-2 p-4">
                   <div className="h-10 w-10 rounded-full bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center mx-auto">
                     <Video className="h-5 w-5 text-indigo-400" />
                   </div>
-                  <p className="text-xs text-zinc-500">Interviewer</p>
-                  <p className="text-[10px] text-zinc-600">
-                    Live video requires the realtime service.
+                  <p className="text-xs text-zinc-300 font-medium">Interviewer</p>
+                  <p className="text-[10px] text-zinc-500 max-w-[200px]">
+                    Live video connects when interviewer joins.
                   </p>
                 </div>
               </div>
@@ -270,30 +276,36 @@ export default function CandidateRoomPage() {
         )}
 
         {activeTab === 'code' && interviewId && sessionId && (
-          <CodingWorkspace
-            sessionId={sessionId}
-            interviewId={interviewId}
-            isInterviewer={false}
-            realtimeClient={null}
-          />
+          <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+            <CodingWorkspace
+              sessionId={sessionId}
+              interviewId={interviewId}
+              isInterviewer={false}
+              realtimeClient={null}
+            />
+          </div>
         )}
 
         {activeTab === 'whiteboard' && interviewId && sessionId && (
-          <WhiteboardWorkspace
-            sessionId={sessionId}
-            interviewId={interviewId}
-            isInterviewer={false}
-            realtimeClient={null}
-          />
+          <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+            <WhiteboardWorkspace
+              sessionId={sessionId}
+              interviewId={interviewId}
+              isInterviewer={false}
+              realtimeClient={null}
+            />
+          </div>
         )}
 
         {activeTab === 'chat' && interviewId && sessionId && (
-          <ChatPanel
-            sessionId={sessionId}
-            currentUserId={`candidate-${token}`}
-            isInterviewer={false}
-            realtimeClient={null}
-          />
+          <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+            <ChatPanel
+              sessionId={sessionId}
+              currentUserId={`candidate-${token}`}
+              isInterviewer={false}
+              realtimeClient={null}
+            />
+          </div>
         )}
 
         {/* Show message if session not yet established */}

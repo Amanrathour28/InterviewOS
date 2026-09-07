@@ -536,13 +536,13 @@ export default function InterviewRoomPage() {
 
   return (
     <div className="h-screen w-screen bg-[#07080c] text-white flex flex-col overflow-hidden select-none">
-      {/* 1. TOP CONTROL CENTER / STATUS BAR */}
-      <header className="h-14 border-b border-slate-800/80 bg-[#0d0e14]/95 px-3.5 flex items-center justify-between shrink-0 gap-2">
+      {/* 1. TOP INTERVIEW HEADER / TIMER / ACTIONS */}
+      <header className="h-12 border-b border-slate-800/80 bg-[#0d0e14]/95 px-3.5 flex items-center justify-between shrink-0 gap-2.5 z-20">
         {/* Left: Branding & Candidate Badge */}
-        <div className="flex items-center gap-2.5 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 min-w-0">
           <Link
             href={`/interviews/${interviewId}`}
-            className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
+            className="flex items-center gap-1.5 text-slate-400 hover:text-white transition-colors shrink-0"
           >
             <div className="h-7 w-7 rounded-lg bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
               <Terminal className="h-3.5 w-3.5" />
@@ -552,7 +552,7 @@ export default function InterviewRoomPage() {
 
           <span className="text-slate-700 hidden sm:inline">•</span>
 
-          <div className="space-y-0.5 max-w-[140px] sm:max-w-[200px]">
+          <div className="min-w-0 max-w-[150px] sm:max-w-[200px] lg:max-w-[280px]">
             <h2 className="text-xs font-bold text-white truncate">{session.interview_title}</h2>
             <p className="text-[10px] text-slate-400 truncate">
               {isInterviewer ? (
@@ -564,14 +564,8 @@ export default function InterviewRoomPage() {
           </div>
         </div>
 
-        {/* Center: Stage Stepper & Synchronized Timer */}
-        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-          <StageStepper
-            currentStage={currentStage}
-            isInterviewer={isInterviewer}
-            onSelectStage={handleStageSelect}
-          />
-
+        {/* Center: Synchronized Timer */}
+        <div className="flex items-center justify-center shrink-0">
           <InterviewTimer
             startedAt={session.started_at}
             pausedAt={session.paused_at}
@@ -583,20 +577,8 @@ export default function InterviewRoomPage() {
           />
         </div>
 
-        {/* Right: Quick Actions, Diagnostics & Panel */}
+        {/* Right: Quick Actions, Diagnostics & Session Panel Toggle */}
         <div className="flex items-center gap-1.5 shrink-0">
-          {session.status === 'waiting' && isInterviewer && (
-            <Button
-              size="sm"
-              onClick={handleStartSession}
-              disabled={isSubmittingAction}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs h-7 px-3 flex items-center gap-1 shadow-md shadow-emerald-600/20"
-            >
-              <Play className="w-3 h-3 fill-current" />
-              <span>Start</span>
-            </Button>
-          )}
-
           <QuickActionsMenu
             isInterviewer={isInterviewer}
             isPaused={session.status === 'paused'}
@@ -620,42 +602,67 @@ export default function InterviewRoomPage() {
             size="sm"
             variant="ghost"
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="h-8 px-2 text-xs text-slate-300 hover:text-white"
+            className={`h-7 px-2 text-xs transition-colors ${
+              isSidebarOpen ? 'bg-slate-800 text-white font-semibold' : 'text-slate-400 hover:text-white'
+            }`}
           >
-            <Users className="h-4 w-4 mr-1 text-slate-400" />
+            <Users className="h-3.5 w-3.5 mr-1 text-slate-400" />
             <span className="hidden sm:inline">Panel ({participants.length})</span>
           </Button>
         </div>
       </header>
 
+      {/* 2. DEDICATED STAGE NAVIGATION BAR */}
+      <div className="h-9 border-b border-slate-800/60 bg-[#090a0f] px-3.5 flex items-center justify-between shrink-0 gap-2 z-10">
+        <div className="flex-1 min-w-0 overflow-x-auto no-scrollbar py-0.5">
+          <StageStepper
+            currentStage={currentStage}
+            isInterviewer={isInterviewer}
+            onSelectStage={handleStageSelect}
+          />
+        </div>
+
+        {session.status === 'waiting' && isInterviewer && (
+          <Button
+            size="sm"
+            onClick={handleStartSession}
+            disabled={isSubmittingAction}
+            className="bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] h-6 px-2.5 flex items-center gap-1 shrink-0 shadow-sm shadow-emerald-600/20"
+          >
+            <Play className="w-2.5 h-2.5 fill-current" />
+            <span>Start Session</span>
+          </Button>
+        )}
+      </div>
+
       {/* Stage Transition Floating Toast Alert */}
       {stageAlert && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 bg-indigo-600/90 backdrop-blur-md border border-indigo-400/50 text-white text-xs font-semibold px-4 py-2 rounded-full shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
+        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-50 bg-indigo-600/90 backdrop-blur-md border border-indigo-400/50 text-white text-xs font-semibold px-4 py-2 rounded-full shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
           <Bell className="w-3.5 h-3.5 text-indigo-200 animate-bounce" />
           <span>Interview Stage Advanced to: <strong>{stageAlert}</strong></span>
         </div>
       )}
 
-      {/* 2. MAIN WORKSPACE CONTAINER */}
-      <div className="flex-1 flex overflow-hidden relative">
+      {/* 3. MAIN WORKSPACE CONTAINER */}
+      <div className="flex-1 min-h-0 flex overflow-hidden relative">
         {/* Workspace Central View */}
-        <main className="flex-1 flex flex-col overflow-hidden bg-[#07080c]">
+        <main className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden bg-[#07080c]">
           {/* Workspace Tabs Header */}
-          <div className="h-10 border-b border-slate-800 bg-slate-950/70 px-4 flex items-center gap-1 overflow-x-auto">
+          <div className="h-9 border-b border-slate-800 bg-slate-950/70 px-3 flex items-center gap-1 shrink-0 overflow-x-auto no-scrollbar">
             <button
               onClick={() => setActiveTab('video')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all ${
-                activeTab === 'video' ? 'bg-slate-800 text-white font-bold' : 'text-slate-400 hover:text-slate-200'
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                activeTab === 'video' ? 'bg-slate-800 text-white font-bold shadow-sm' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               <Video className="h-3.5 w-3.5 text-indigo-400" />
-              <span>Live Video Stage</span>
+              <span>Live Video</span>
             </button>
 
             <button
               onClick={() => setActiveTab('code')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all ${
-                activeTab === 'code' ? 'bg-slate-800 text-white font-bold' : 'text-slate-400 hover:text-slate-200'
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                activeTab === 'code' ? 'bg-slate-800 text-white font-bold shadow-sm' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               <Code2 className="h-3.5 w-3.5 text-cyan-400" />
@@ -664,8 +671,8 @@ export default function InterviewRoomPage() {
 
             <button
               onClick={() => setActiveTab('whiteboard')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all ${
-                activeTab === 'whiteboard' ? 'bg-slate-800 text-white font-bold' : 'text-slate-400 hover:text-slate-200'
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                activeTab === 'whiteboard' ? 'bg-slate-800 text-white font-bold shadow-sm' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               <PenTool className="h-3.5 w-3.5 text-purple-400" />
@@ -674,8 +681,8 @@ export default function InterviewRoomPage() {
 
             <button
               onClick={() => setActiveTab('chat')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all ${
-                activeTab === 'chat' ? 'bg-slate-800 text-white font-bold' : 'text-slate-400 hover:text-slate-200'
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                activeTab === 'chat' ? 'bg-slate-800 text-white font-bold shadow-sm' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               <MessageSquare className="h-3.5 w-3.5 text-emerald-400" />
@@ -686,8 +693,8 @@ export default function InterviewRoomPage() {
               <>
                 <button
                   onClick={() => setActiveTab('notes')}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all ${
-                    activeTab === 'notes' ? 'bg-slate-800 text-white font-bold' : 'text-slate-400 hover:text-slate-200'
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                    activeTab === 'notes' ? 'bg-slate-800 text-white font-bold shadow-sm' : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
                   <FileText className="h-3.5 w-3.5 text-purple-400" />
@@ -696,8 +703,8 @@ export default function InterviewRoomPage() {
 
                 <button
                   onClick={() => setActiveTab('ai')}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all ${
-                    activeTab === 'ai' ? 'bg-slate-800 text-white font-bold' : 'text-slate-400 hover:text-slate-200'
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                    activeTab === 'ai' ? 'bg-slate-800 text-white font-bold shadow-sm' : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
                   <Sparkles className="h-3.5 w-3.5 text-amber-400" />
@@ -708,46 +715,48 @@ export default function InterviewRoomPage() {
           </div>
 
           {/* Active Workspace Body */}
-          <div className="flex-1 p-4 overflow-hidden relative flex flex-col">
+          <div className="flex-1 min-h-0 min-w-0 overflow-hidden relative flex flex-col">
             {/* TAB: VIDEO */}
             {activeTab === 'video' && (
-              <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 h-full overflow-y-auto">
-                <VideoTile
-                  userId={joinDataRef.current?.user_id || 'local'}
-                  stream={localStream}
-                  userName={`${joinDataRef.current?.user_name || 'You'} (You)`}
-                  isLocal={true}
-                  cameraEnabled={isCameraEnabled}
-                  microphoneEnabled={isMicEnabled}
-                  activeSpeaker={activeSpeakerId === joinDataRef.current?.user_id}
-                  screenSharing={isScreenSharing}
-                  role={joinDataRef.current?.role || 'interviewer'}
-                />
+              <div className="flex-1 min-h-0 p-3 sm:p-4 overflow-y-auto flex items-center justify-center">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 w-full max-w-5xl h-full max-h-[calc(100vh-230px)]">
+                  <VideoTile
+                    userId={joinDataRef.current?.user_id || 'local'}
+                    stream={localStream}
+                    userName={`${joinDataRef.current?.user_name || 'You'} (You)`}
+                    isLocal={true}
+                    cameraEnabled={isCameraEnabled}
+                    microphoneEnabled={isMicEnabled}
+                    activeSpeaker={activeSpeakerId === joinDataRef.current?.user_id}
+                    screenSharing={isScreenSharing}
+                    role={joinDataRef.current?.role || 'interviewer'}
+                  />
 
-                {Object.entries(remoteStreams).map(([remoteUserId, remoteData]) => {
-                  const participantMeta = participants.find((p) => p.userId === remoteUserId);
-                  return (
-                    <VideoTile
-                      key={remoteUserId}
-                      userId={remoteUserId}
-                      stream={remoteData.stream}
-                      userName={participantMeta?.userName || 'Remote Participant'}
-                      isLocal={false}
-                      cameraEnabled={remoteData.cameraEnabled !== false}
-                      microphoneEnabled={remoteData.microphoneEnabled !== false}
-                      activeSpeaker={activeSpeakerId === remoteUserId}
-                      screenSharing={remoteData.screenSharing}
-                      connectionState={remoteData.connectionState}
-                      role={participantMeta?.role || 'candidate'}
-                    />
-                  );
-                })}
+                  {Object.entries(remoteStreams).map(([remoteUserId, remoteData]) => {
+                    const participantMeta = participants.find((p) => p.userId === remoteUserId);
+                    return (
+                      <VideoTile
+                        key={remoteUserId}
+                        userId={remoteUserId}
+                        stream={remoteData.stream}
+                        userName={participantMeta?.userName || 'Remote Participant'}
+                        isLocal={false}
+                        cameraEnabled={remoteData.cameraEnabled !== false}
+                        microphoneEnabled={remoteData.microphoneEnabled !== false}
+                        activeSpeaker={activeSpeakerId === remoteUserId}
+                        screenSharing={remoteData.screenSharing}
+                        connectionState={remoteData.connectionState}
+                        role={participantMeta?.role || 'candidate'}
+                      />
+                    );
+                  })}
+                </div>
               </div>
             )}
 
             {/* TAB: CODE */}
             {activeTab === 'code' && (
-              <div className="flex-1 -m-4 h-[calc(100%+2rem)] overflow-hidden">
+              <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
                 <CodingWorkspace
                   sessionId={session.id}
                   interviewId={interviewId}
@@ -759,7 +768,7 @@ export default function InterviewRoomPage() {
 
             {/* TAB: WHITEBOARD */}
             {activeTab === 'whiteboard' && (
-              <div className="flex-1 -m-4 h-[calc(100%+2rem)] overflow-hidden">
+              <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
                 <WhiteboardWorkspace
                   sessionId={session.id}
                   interviewId={interviewId}
@@ -772,7 +781,7 @@ export default function InterviewRoomPage() {
 
             {/* TAB: CHAT */}
             {activeTab === 'chat' && (
-              <div className="flex-1 -m-4 h-[calc(100%+2rem)] overflow-hidden">
+              <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
                 <ChatPanel
                   sessionId={session.id}
                   currentUserId={joinDataRef.current?.user_id || ''}
@@ -784,7 +793,7 @@ export default function InterviewRoomPage() {
 
             {/* TAB: STRUCTURED NOTES */}
             {activeTab === 'notes' && isInterviewer && (
-              <div className="flex-1 h-full overflow-hidden">
+              <div className="flex-1 min-h-0 min-w-0 overflow-y-auto p-3 sm:p-4">
                 <StructuredNotesPanel
                   sessionId={session.id}
                   currentStage={currentStage}
@@ -794,7 +803,7 @@ export default function InterviewRoomPage() {
 
             {/* TAB: AI COPILOT */}
             {activeTab === 'ai' && isInterviewer && (
-              <div className="flex-1 -m-4 h-[calc(100%+2rem)] overflow-hidden">
+              <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
                 <AICopilotPanel
                   interviewId={interviewId}
                   workspaceId={session.workspace_id || ''}
@@ -810,24 +819,28 @@ export default function InterviewRoomPage() {
           </div>
         </main>
 
-        {/* 3. COLLAPSIBLE PARTICIPANT SIDEBAR */}
+        {/* 4. COLLAPSIBLE PARTICIPANT SIDEBAR (SESSION PANEL) */}
         {isSidebarOpen && (
-          <aside className="w-72 border-l border-slate-800/80 bg-[#0a0b10] flex flex-col shrink-0">
-            <div className="h-10 border-b border-slate-800/80 px-4 flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider">
+          <aside className="w-60 lg:w-64 xl:w-72 border-l border-slate-800/80 bg-[#0a0b10] flex flex-col shrink-0 min-h-0">
+            <div className="h-9 border-b border-slate-800/80 px-3 flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider shrink-0">
               <span>Session Panel ({participants.length})</span>
-              <button onClick={() => setIsSidebarOpen(false)} className="text-slate-500 hover:text-white">
+              <button
+                onClick={() => setIsSidebarOpen(false)}
+                className="p-1 text-slate-500 hover:text-white rounded hover:bg-slate-800 transition-colors"
+                title="Collapse Session Panel"
+              >
                 ✕
               </button>
             </div>
 
-            <div className="flex-1 p-3 space-y-2 overflow-y-auto">
+            <div className="flex-1 min-h-0 p-2.5 space-y-1.5 overflow-y-auto">
               {participants.map((p) => (
                 <div
                   key={p.userId}
-                  className="p-2.5 rounded-lg border border-slate-800 bg-slate-950/70 flex items-center justify-between gap-2"
+                  className="p-2 rounded-lg border border-slate-800/90 bg-slate-950/70 flex items-center justify-between gap-2"
                 >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="relative">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="relative shrink-0">
                       <div className="h-7 w-7 rounded-full bg-slate-800 flex items-center justify-center text-[11px] font-bold text-white uppercase">
                         {p.userName?.[0] || 'U'}
                       </div>
@@ -839,11 +852,11 @@ export default function InterviewRoomPage() {
                     </div>
                     <div className="min-w-0">
                       <p className="text-xs font-bold text-white truncate">{p.userName}</p>
-                      <p className="text-[10px] text-slate-500 capitalize">{p.role}</p>
+                      <p className="text-[10px] text-slate-500 capitalize truncate">{p.role}</p>
                     </div>
                   </div>
 
-                  <span className={`text-[10px] font-semibold ${p.online ? 'text-emerald-400' : 'text-slate-600'}`}>
+                  <span className={`text-[10px] font-semibold shrink-0 ${p.online ? 'text-emerald-400' : 'text-slate-600'}`}>
                     {p.online ? 'Online' : 'Offline'}
                   </span>
                 </div>
@@ -851,6 +864,7 @@ export default function InterviewRoomPage() {
             </div>
           </aside>
         )}
+
 
         {/* 4. ACTIVITY TIMELINE DRAWER */}
         <ActivityTimelineDrawer
