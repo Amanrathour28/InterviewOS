@@ -1,6 +1,7 @@
 import time
 import uuid
 import logging
+import traceback
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -72,6 +73,38 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "message": "Invalid request payload or parameters",
             "details": exc.errors(),
         },
+    )
+
+
+# Global Unhandled Exception Handler
+# Logs full traceback to server logs; returns safe JSON to client.
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    request_id = request.headers.get("X-Request-ID", "unknown")
+    tb = traceback.format_exc()
+    logger.error(
+        "Unhandled exception [request_id=%s] %s %s\n%s",
+        request_id,
+        request.method,
+        request.url.path,
+        tb,
+    )
+    # Return a safe detail — never include stack trace, SQL, or secrets
+    error_type = type(exc).__name__
+    if "ProgrammingError" in error_type or "UndefinedColumn" in error_type:
+        detail = (
+            "Database schema error: a required column is missing. "
+            "Migration 017 may not have been applied to the production database."
+        )
+    elif "IntegrityError" in error_type or "UniqueViolation" in error_type:
+        detail = "Database integrity error: a unique constraint was violated."
+    elif "OperationalError" in error_type:
+        detail = "Database connection error. Please try again in a few seconds."
+    else:
+        detail = "An internal server error occurred. Our team has been notified."
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": detail},
     )
 
 

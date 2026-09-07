@@ -85,10 +85,28 @@ def _sha256(value: str) -> str:
 
 
 def _build_join_url(token: str) -> str:
-    """Build a frontend join URL.  Reads APP_URL from settings at call-time so
-    we never hardcode the production domain."""
+    """Build a frontend join URL.
+
+    Resolution order (first non-localhost value wins):
+    1. settings.APP_URL          — set via APP_URL env var on Vercel
+    2. NEXT_PUBLIC_APP_URL       — Vercel typically sets this for Next.js
+    3. http://localhost:3000     — safe local fallback
+
+    This ensures that deployments which only configure NEXT_PUBLIC_APP_URL
+    still generate correct shareable join links.
+    """
+    import os
     from app.core.config import settings  # local import to avoid circular
-    base = getattr(settings, "APP_URL", "http://localhost:3000").rstrip("/")
+
+    localhost_prefixes = ("http://localhost", "http://127.0.0.1")
+
+    base = getattr(settings, "APP_URL", "").rstrip("/")
+    if not base or any(base.startswith(p) for p in localhost_prefixes):
+        # Try the NEXT_PUBLIC_APP_URL env var as fallback (set by Vercel for Next.js)
+        base = os.environ.get("NEXT_PUBLIC_APP_URL", "").rstrip("/")
+    if not base or any(base.startswith(p) for p in localhost_prefixes):
+        base = "http://localhost:3000"
+
     return f"{base}/join/{token}"
 
 
