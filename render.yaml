@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: interviewos-realtime
+    runtime: docker
+    dockerfilePath: apps/realtime/Dockerfile
+    dockerContext: apps/realtime
+    plan: starter
+    envVars:
+      - key: PORT
+        value: 4000
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        value: https://interviewos-nine.vercel.app

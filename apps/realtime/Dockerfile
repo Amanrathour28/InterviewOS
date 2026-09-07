@@ -2,7 +2,7 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-COPY package.json ./
+COPY package.json package-lock.json* ./
 RUN npm install
 
 COPY tsconfig.json ./
@@ -16,7 +16,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=4000
 
-COPY package.json ./
+COPY package.json package-lock.json* ./
 RUN npm install --omit=dev
 
 COPY --from=builder /app/dist ./dist

@@ -2,7 +2,7 @@ import http from 'http';
 import express from 'express';
 import cors from 'cors';
 import { Server, Socket } from 'socket.io';
-import { config } from './config/index.js';
+import { config, isAllowedOrigin } from './config/index.js';
 import { createRedisAdapter, checkRedisHealth } from './redis/client.js';
 import { authenticateSocket } from './auth/jwt-auth.js';
 import { RoomManager } from './rooms/room-manager.js';
@@ -11,7 +11,18 @@ import { eventRouter } from './events/event-router.js';
 import { SocketUser } from './types/index.js';
 
 const app = express();
-app.use(cors({ origin: config.corsOrigins, credentials: true }));
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (isAllowedOrigin(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS origin not allowed: ${origin}`));
+      }
+    },
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 // 1. Health check endpoint
@@ -31,7 +42,13 @@ const server = http.createServer(app);
 // 2. Initialize Socket.IO server
 const io = new Server(server, {
   cors: {
-    origin: config.corsOrigins,
+    origin: (origin, callback) => {
+      if (isAllowedOrigin(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS origin not allowed: ${origin}`));
+      }
+    },
     methods: ['GET', 'POST'],
     credentials: true,
   },
@@ -438,6 +455,21 @@ async function bootstrap() {
     console.log(`🚀 InterviewOS Realtime Gateway running on port ${config.port} (0.0.0.0)`);
     console.log(`📡 Health check available at http://0.0.0.0:${config.port}/health`);
   });
+
+  const shutdown = (signal: string) => {
+    console.log(`[Realtime] Received ${signal}, closing server gracefully...`);
+    server.close(() => {
+      console.log('[Realtime] HTTP and Socket.IO server closed');
+      process.exit(0);
+    });
+    setTimeout(() => {
+      console.error('[Realtime] Forced shutdown after timeout');
+      process.exit(1);
+    }, 10000);
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 bootstrap().catch((err) => {
