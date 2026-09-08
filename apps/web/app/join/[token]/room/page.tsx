@@ -83,6 +83,7 @@ export default function CandidateRoomPage() {
 
   // References for cleanup and signaling
   const streamRef = useRef<MediaStream | null>(null);
+  const [realtimeClient, setRealtimeClient] = useState<RealtimeClient | null>(null);
   const realtimeClientRef = useRef<RealtimeClient | null>(null);
   const peerManagerRef = useRef<PeerConnectionManager | null>(null);
   const signalingManagerRef = useRef<SignalingManager | null>(null);
@@ -316,6 +317,7 @@ export default function CandidateRoomPage() {
           },
         });
         realtimeClientRef.current = realtimeClient;
+        setRealtimeClient(realtimeClient);
 
         // Initialize WebRTC Signaling Manager
         const signalingManager = new SignalingManager(realtimeClient, peerManager);
@@ -619,7 +621,7 @@ export default function CandidateRoomPage() {
               sessionId={sessionId}
               interviewId={interviewId}
               isInterviewer={false}
-              realtimeClient={realtimeClientRef.current}
+              realtimeClient={realtimeClient}
             />
           </div>
         )}
@@ -630,7 +632,7 @@ export default function CandidateRoomPage() {
               sessionId={sessionId}
               interviewId={interviewId}
               isInterviewer={false}
-              realtimeClient={realtimeClientRef.current}
+              realtimeClient={realtimeClient}
             />
           </div>
         )}
@@ -641,7 +643,7 @@ export default function CandidateRoomPage() {
               sessionId={sessionId}
               currentUserId={candidateUserId || `candidate-${token}`}
               isInterviewer={false}
-              realtimeClient={realtimeClientRef.current}
+              realtimeClient={realtimeClient}
             />
           </div>
         )}

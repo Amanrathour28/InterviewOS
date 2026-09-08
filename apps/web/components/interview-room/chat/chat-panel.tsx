@@ -66,6 +66,8 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const realtimeClientRef = useRef(realtimeClient);
+  realtimeClientRef.current = realtimeClient;
 
   // 1. Fetch accessible channels on mount
   const loadChannels = useCallback(async () => {
@@ -200,7 +202,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         }),
       });
       addMessage(activeChannelId, serverMsg);
-      realtimeClient?.dispatchEvent('CHAT_MESSAGE_CREATED', {
+      realtimeClientRef.current?.dispatchEvent('CHAT_MESSAGE_CREATED', {
         channel_id: activeChannelId,
         message: serverMsg,
       });
@@ -248,7 +250,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         }),
       });
       addMessage(activeChannelId, serverMsg);
-      realtimeClient?.dispatchEvent('CHAT_MESSAGE_CREATED', {
+      realtimeClientRef.current?.dispatchEvent('CHAT_MESSAGE_CREATED', {
         channel_id: activeChannelId,
         message: serverMsg,
       });
@@ -261,14 +263,14 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setTextInput(e.target.value);
 
-    if (activeChannelId && realtimeClient) {
-      realtimeClient.sendTyping(activeChannelId, activeChannel?.channel_type || 'public', true);
+    if (activeChannelId && realtimeClientRef.current) {
+      realtimeClientRef.current.sendTyping(activeChannelId, activeChannel?.channel_type || 'public', true);
 
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
       typingTimeoutRef.current = setTimeout(() => {
-        realtimeClient.sendTyping(activeChannelId, activeChannel?.channel_type || 'public', false);
+        realtimeClientRef.current?.sendTyping(activeChannelId, activeChannel?.channel_type || 'public', false);
       }, 3000);
     }
   };

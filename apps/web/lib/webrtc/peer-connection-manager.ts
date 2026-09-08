@@ -148,6 +148,7 @@ export class PeerConnectionManager {
       try {
         peer.makingOffer = true;
         const offer = await pc.createOffer();
+        if (pc.signalingState !== 'stable') return;
         await pc.setLocalDescription(offer);
 
         this.onSendSignal?.({
@@ -156,7 +157,7 @@ export class PeerConnectionManager {
           senderUserId: this.config.localUserId,
           senderName: this.config.localUserName,
           senderRole: this.config.localUserRole,
-          sdp: pc.localDescription || undefined,
+          sdp: pc.localDescription ? { type: pc.localDescription.type, sdp: pc.localDescription.sdp } : offer,
         });
       } catch (err) {
         console.warn(`[WebRTC Peer ${userId}] Negotiation offer error:`, err);
@@ -208,7 +209,7 @@ export class PeerConnectionManager {
     pc.oniceconnectionstatechange = () => {
       console.log(`[WebRTC Peer ${userId}] pc.iceConnectionState changed to: ${pc.iceConnectionState}`);
       this.onPeerConnectionChanged?.(userId, pc.connectionState, pc.iceConnectionState);
-      if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+      if (pc.iceConnectionState === 'failed') {
         this.restartIce(userId);
       }
     };
@@ -229,6 +230,15 @@ export class PeerConnectionManager {
           return;
         }
 
+        if (offerCollision) {
+          try {
+            console.log(`[WebRTC Peer ${peer.userId}] Polite peer rolling back local offer due to glare`);
+            await pc.setLocalDescription({ type: 'rollback' });
+          } catch (rollbackErr) {
+            console.warn(`[WebRTC Peer ${peer.userId}] Rollback error:`, rollbackErr);
+          }
+        }
+
         peer.isSettingRemoteAnswerPending = false;
         await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
 
@@ -239,14 +249,19 @@ export class PeerConnectionManager {
         await pc.setLocalDescription(answer);
 
         this.onSendSignal?.({
-          signalType: 'answer',
           targetUserId: peer.userId,
+          signalType: 'answer',
           senderUserId: this.config.localUserId,
           senderName: this.config.localUserName,
           senderRole: this.config.localUserRole,
-          sdp: pc.localDescription || undefined,
+          sdp: pc.localDescription ? { type: pc.localDescription.type, sdp: pc.localDescription.sdp } : answer,
         });
+        await this.flushCandidateBuffer(peer);
       } else if (msg.signalType === 'answer' && msg.sdp) {
+        if (pc.signalingState !== 'have-local-offer') {
+          console.warn(`[WebRTC Peer ${peer.userId}] Ignoring answer in unexpected state: ${pc.signalingState}`);
+          return;
+        }
         peer.isSettingRemoteAnswerPending = false;
         await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
         await this.flushCandidateBuffer(peer);

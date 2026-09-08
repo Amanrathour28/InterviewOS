@@ -38,6 +38,13 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
   const isApplyingRemoteUpdate = useRef(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  const realtimeClientRef = useRef(realtimeClient);
+  realtimeClientRef.current = realtimeClient;
+  const isLockedRef = useRef(isLocked);
+  isLockedRef.current = isLocked;
+  const isInterviewerRef = useRef(isInterviewer);
+  isInterviewerRef.current = isInterviewer;
+
   // 1. Debounced save to PostgreSQL
   const debouncedSaveDocument = useCallback(
     (documentSnapshot: any) => {
@@ -82,15 +89,15 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
           if (isApplyingRemoteUpdate.current) return;
 
           // If locked and candidate, don't propagate
-          if (isLocked && !isInterviewer) return;
+          if (isLockedRef.current && !isInterviewerRef.current) return;
 
           // Broadcast pure RecordsDiff { added, updated, removed } rather than HistoryEntry wrapper
           const diff = (change as any)?.changes || change;
 
-          if (realtimeClient) {
-            realtimeClient.emit('whiteboard_patch', {
+          if (realtimeClientRef.current) {
+            realtimeClientRef.current.emit('whiteboard_patch', {
               changes: diff,
-              isLocked,
+              isLocked: isLockedRef.current,
             });
           }
 
@@ -105,7 +112,7 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
         cleanupListener();
       };
     },
-    [whiteboard, isLocked, isInterviewer, realtimeClient, debouncedSaveDocument, onEditorReady]
+    [whiteboard, debouncedSaveDocument, onEditorReady]
   );
 
   // 3. Setup Real-time WebSocket Listeners
@@ -130,7 +137,9 @@ export const WhiteboardCanvas: React.FC<WhiteboardCanvasProps> = ({
         };
 
         isApplyingRemoteUpdate.current = true;
-        editorRef.current.store.applyDiff(normalizedDiff);
+        editorRef.current.store.mergeRemoteChanges(() => {
+          editorRef.current?.store.applyDiff(normalizedDiff);
+        });
       } catch (err) {
         console.error('Failed to apply remote whiteboard patch:', err);
       } finally {

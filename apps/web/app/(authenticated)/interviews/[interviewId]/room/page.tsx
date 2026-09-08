@@ -120,6 +120,7 @@ export default function InterviewRoomPage() {
   const [stageAlert, setStageAlert] = useState<string | null>(null);
 
   // WebRTC & Gateway References
+  const [realtimeClient, setRealtimeClient] = useState<RealtimeClient | null>(null);
   const realtimeClientRef = useRef<RealtimeClient | null>(null);
   const mediaManagerRef = useRef<MediaManager | null>(null);
   const peerManagerRef = useRef<PeerConnectionManager | null>(null);
@@ -331,6 +332,7 @@ export default function InterviewRoomPage() {
       },
     });
     realtimeClientRef.current = realtimeClient;
+    setRealtimeClient(realtimeClient);
 
     // Connect Signaling Manager
     const signalingManager = new SignalingManager(realtimeClient, peerManager);
@@ -806,7 +808,7 @@ export default function InterviewRoomPage() {
                   sessionId={session.id}
                   interviewId={interviewId}
                   isInterviewer={isInterviewer}
-                  realtimeClient={realtimeClientRef.current}
+                  realtimeClient={realtimeClient}
                 />
               </div>
             )}
@@ -819,7 +821,7 @@ export default function InterviewRoomPage() {
                   interviewId={interviewId}
                   isInterviewer={isInterviewer}
                   token={joinDataRef.current?.token}
-                  realtimeClient={realtimeClientRef.current}
+                  realtimeClient={realtimeClient}
                 />
               </div>
             )}
@@ -831,7 +833,7 @@ export default function InterviewRoomPage() {
                   sessionId={session.id}
                   currentUserId={joinDataRef.current?.user_id || ''}
                   isInterviewer={isInterviewer}
-                  realtimeClient={realtimeClientRef.current}
+                  realtimeClient={realtimeClient}
                 />
               </div>
             )}
