@@ -31,6 +31,8 @@ import {
   LogOut,
   Maximize2,
   Bell,
+  UserPlus,
+  CheckCircle2,
 } from 'lucide-react';
 import { apiClient } from '@/lib/api';
 import { RealtimeClient, ConnectionState, resolveRealtimeUrl } from '@/lib/realtime/realtime-client';
@@ -42,6 +44,7 @@ import { MediaDeviceSettings } from '@/lib/webrtc/types';
 import { AudioSTTManager } from '@/lib/webrtc/audio-stt-manager';
 import { buildEffectiveIceServers, resolveIceTransportPolicy } from '@/lib/webrtc/ice-config';
 import { VideoTile } from '@/components/interview-room/video-tile';
+import { InviteCandidateModal } from '@/components/interview-room/invite-candidate-modal';
 import { DeviceCheckModal } from '@/components/interview-room/device-check-modal';
 import { DeviceSettingsModal } from '@/components/interview-room/device-settings-modal';
 import { NetworkDiagnosticsModal } from '@/components/interview-room/network-diagnostics-modal';
@@ -119,6 +122,13 @@ export default function InterviewRoomPage() {
   const [isEndModalOpen, setIsEndModalOpen] = useState(false);
   const [isTimelineOpen, setIsTimelineOpen] = useState(false);
   const [stageAlert, setStageAlert] = useState<string | null>(null);
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = useCallback((msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  }, []);
 
   // WebRTC & Gateway References
   const [realtimeClient, setRealtimeClient] = useState<RealtimeClient | null>(null);
@@ -647,6 +657,19 @@ export default function InterviewRoomPage() {
             remoteVideoReceived={Object.values(remoteStreams).some((r: any) => Boolean(r.stream))}
           />
 
+          {isInterviewer && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setIsInviteModalOpen(true)}
+              aria-label="Invite people to this interview"
+              className="h-7 px-2.5 text-xs bg-indigo-600/20 border-indigo-500/40 text-indigo-300 hover:bg-indigo-600/30 hover:text-white transition-colors flex items-center gap-1.5"
+            >
+              <UserPlus className="h-3.5 w-3.5 text-indigo-400" />
+              <span className="hidden sm:inline font-medium">Invite</span>
+            </Button>
+          )}
+
           <Button
             size="sm"
             variant="ghost"
@@ -689,6 +712,14 @@ export default function InterviewRoomPage() {
         <div className="absolute top-24 left-1/2 -translate-x-1/2 z-50 bg-indigo-600/90 backdrop-blur-md border border-indigo-400/50 text-white text-xs font-semibold px-4 py-2 rounded-full shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
           <Bell className="w-3.5 h-3.5 text-indigo-200 animate-bounce" />
           <span>Interview Stage Advanced to: <strong>{stageAlert}</strong></span>
+        </div>
+      )}
+
+      {/* Copy/Feedback Toast Alert */}
+      {toastMessage && (
+        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-50 bg-emerald-600/90 backdrop-blur-md border border-emerald-400/50 text-white text-xs font-semibold px-4 py-2 rounded-full shadow-2xl flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
+          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-200" />
+          <span>{toastMessage}</span>
         </div>
       )}
 
@@ -799,6 +830,32 @@ export default function InterviewRoomPage() {
                       />
                     );
                   })}
+
+                  {/* Empty Waiting State when alone in room */}
+                  {Object.keys(remoteStreams).length === 0 && isInterviewer && (
+                    <div className="relative rounded-2xl border border-dashed border-slate-800 bg-slate-950/50 p-6 flex flex-col items-center justify-center text-center gap-3.5 min-h-[220px]">
+                      <div className="h-12 w-12 rounded-2xl bg-indigo-600/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                        <UserPlus className="h-6 w-6" />
+                      </div>
+                      <div className="space-y-1">
+                        <h4 className="text-sm font-bold text-white tracking-tight">
+                          Waiting for candidate
+                        </h4>
+                        <p className="text-xs text-slate-400 max-w-xs">
+                          Share the interview link to invite the candidate to join this session.
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        onClick={() => setIsInviteModalOpen(true)}
+                        aria-label="Invite candidate"
+                        className="h-8 px-4 text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20 flex items-center gap-1.5"
+                      >
+                        <UserPlus className="h-3.5 w-3.5" />
+                        <span>Invite candidate</span>
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -910,6 +967,22 @@ export default function InterviewRoomPage() {
                   </span>
                 </div>
               ))}
+
+              {/* Waiting for candidate helper in panel */}
+              {isInterviewer && !participants.some((p) => p.role === 'candidate') && (
+                <div className="p-3 rounded-xl border border-indigo-500/20 bg-indigo-950/20 space-y-2 text-center mt-2">
+                  <p className="text-[11px] text-slate-400 font-medium">Waiting for candidate</p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setIsInviteModalOpen(true)}
+                    className="w-full h-7 text-[11px] font-semibold border-indigo-500/40 text-indigo-300 hover:bg-indigo-600/20 flex items-center justify-center gap-1"
+                  >
+                    <UserPlus className="h-3 w-3 text-indigo-400" />
+                    <span>Invite candidate</span>
+                  </Button>
+                </div>
+              )}
             </div>
           </aside>
         )}
@@ -1031,6 +1104,14 @@ export default function InterviewRoomPage() {
         onClose={() => setIsEndModalOpen(false)}
         onConfirmEnd={handleConfirmEnd}
         isSubmitting={isSubmittingAction}
+      />
+
+      <InviteCandidateModal
+        isOpen={isInviteModalOpen}
+        onClose={() => setIsInviteModalOpen(false)}
+        interviewId={interviewId}
+        interviewTitle={session.interview_title}
+        onCopyToast={showToast}
       />
     </div>
   );

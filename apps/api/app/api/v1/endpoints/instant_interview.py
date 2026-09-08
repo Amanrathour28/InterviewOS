@@ -6,7 +6,9 @@ Routes:
   POST /interviews/join/{token}/identity   — submit candidate identity, get session token
   GET  /interviews/join/{token}/status     — poll interview status (candidate session)
 """
+import base64
 import hashlib
+import hmac
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -18,7 +20,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import get_candidate_session, get_current_user, get_db, verify_workspace_access
+from app.api.deps import (
+    get_candidate_session,
+    get_current_user,
+    get_db,
+    verify_interview_access,
+    verify_workspace_access,
+)
 from app.core.config import settings
 from app.core.security import create_candidate_session_token, hash_token
 from app.services.session_service import session_service
@@ -91,12 +99,33 @@ class CandidateRoomSessionResponse(BaseModel):
     ice_servers: List[Dict[str, Any]]
 
 
+class InterviewInviteLinkResponse(BaseModel):
+    interview_id: uuid.UUID
+    token: str
+    join_url: str
+    expires_at: datetime
+
+
 # ---------------------------------------------------------------------------
-# Helper
+# Helpers
 # ---------------------------------------------------------------------------
 
 def _sha256(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _derive_interview_candidate_token(interview_id: uuid.UUID, secret_key: str) -> str:
+    """Derive a deterministic, cryptographically secure candidate join token.
+
+    Using HMAC-SHA256 with the server SECRET_KEY ensures:
+    1. Unpredictability: Impossible to forge without the secret key.
+    2. Idempotency: Multiple requests for the same interview return the exact same token.
+    3. URL-safe format: 43 characters matching the length/format of secrets.token_urlsafe(32).
+    """
+    key = secret_key.encode("utf-8")
+    msg = f"candidate_join_invite:{interview_id}".encode("utf-8")
+    digest = hmac.new(key, msg, hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(digest).decode("utf-8").rstrip("=")
 
 
 def _build_join_url(token: str, request: Optional[Request] = None) -> str:
@@ -241,8 +270,8 @@ async def create_instant_interview(
     db.add(new_interview)
     await db.flush()
 
-    # 4. Generate invitation token (raw never stored)
-    raw_token = secrets.token_urlsafe(32)
+    # 4. Generate invitation token (deterministic HMAC derivation)
+    raw_token = _derive_interview_candidate_token(new_interview.id, settings.SECRET_KEY)
     token_hash = _sha256(raw_token)
 
     invitation = InterviewInvitation(
@@ -613,3 +642,98 @@ async def get_candidate_room_session(
         realtime_url=realtime_url,
         ice_servers=ice_servers,
     )
+
+
+# ---------------------------------------------------------------------------
+# GET & POST /interviews/{interview_id}/invite-link — INTERVIEWER AUTHENTICATED
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/interviews/{interview_id}/invite-link",
+    response_model=InterviewInviteLinkResponse,
+    summary="Get candidate join/invite link for an active interview",
+    tags=["Candidate Join"],
+)
+@router.post(
+    "/interviews/{interview_id}/invite-link",
+    response_model=InterviewInviteLinkResponse,
+    summary="Get or generate candidate join/invite link for an active interview",
+    tags=["Candidate Join"],
+)
+async def get_or_create_interview_invite_link(
+    interview_id: uuid.UUID,
+    request: Request,
+    interview: Interview = Depends(verify_interview_access),
+    db: AsyncSession = Depends(get_db),
+) -> InterviewInviteLinkResponse:
+    """Interviewer authenticated endpoint.
+
+    Verifies that the current user has access to the interview and its parent workspace.
+    Returns the candidate join URL for the active interview.
+    Idempotent: Multiple calls return the exact same join URL without creating duplicate
+    invitations or invalidating active tokens.
+    """
+    raw_token = _derive_interview_candidate_token(interview.id, settings.SECRET_KEY)
+    token_hash = _sha256(raw_token)
+
+    stmt = (
+        select(InterviewInvitation)
+        .where(
+            InterviewInvitation.interview_id == interview.id,
+            InterviewInvitation.recipient_type == RecipientType.CANDIDATE,
+        )
+        .order_by(InterviewInvitation.created_at.desc())
+    )
+    res = await db.execute(stmt)
+    invitation = res.scalars().first()
+
+    now_utc = datetime.now(timezone.utc)
+    if invitation is None:
+        cand_email = None
+        cand_name = None
+        if interview.candidate:
+            cand_email = interview.candidate.email
+            cand_name = f"{interview.candidate.first_name} {interview.candidate.last_name}".strip()
+
+        invitation = InterviewInvitation(
+            interview_id=interview.id,
+            workspace_id=interview.workspace_id,
+            recipient_type=RecipientType.CANDIDATE,
+            email=cand_email or f"guest-candidate-{interview.id.hex[:8]}@interviewos.internal",
+            token_hash=token_hash,
+            status=InvitationStatus.SENT,
+            expires_at=now_utc + timedelta(hours=48),
+            sent_at=now_utc,
+            candidate_name=cand_name,
+            candidate_email=cand_email,
+        )
+        db.add(invitation)
+        await db.commit()
+        await db.refresh(invitation)
+    else:
+        changed = False
+        if invitation.token_hash != token_hash:
+            invitation.token_hash = token_hash
+            changed = True
+        exp_utc = (
+            invitation.expires_at
+            if invitation.expires_at.tzinfo
+            else invitation.expires_at.replace(tzinfo=timezone.utc)
+        )
+        if exp_utc < now_utc or invitation.status == InvitationStatus.EXPIRED:
+            invitation.expires_at = now_utc + timedelta(hours=48)
+            invitation.status = InvitationStatus.SENT
+            changed = True
+        if changed:
+            await db.commit()
+            await db.refresh(invitation)
+
+    join_url = _build_join_url(raw_token, request=request)
+
+    return InterviewInviteLinkResponse(
+        interview_id=interview.id,
+        token=raw_token,
+        join_url=join_url,
+        expires_at=invitation.expires_at,
+    )
+

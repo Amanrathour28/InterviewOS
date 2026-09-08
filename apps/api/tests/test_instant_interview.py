@@ -827,3 +827,93 @@ async def test_interviewer_token_cannot_be_used_as_candidate_jwt(client: AsyncCl
     )
     assert resp.status_code == 401
 
+
+# ---------------------------------------------------------------------------
+# In-Interview Invite Link Tests (Phase 17.9)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_get_interview_invite_link_success_and_idempotent(client: AsyncClient, db_session):
+    """Interviewer can retrieve the candidate join URL inside the active room.
+    
+    Subsequent calls return the exact same join URL without creating duplicate invitations.
+    """
+    user, ws, org = await _create_user_workspace(db_session)
+    await db_session.commit()
+
+    # Create instant interview
+    create_resp = await client.post(
+        "/api/v1/interviews/instant",
+        json={"workspace_id": str(ws.id), "interview_type": "technical", "duration_minutes": 60},
+        headers=_auth_headers(user.id),
+    )
+    assert create_resp.status_code == 201
+    create_data = create_resp.json()
+    interview_id = create_data["interview_id"]
+    original_join_url = create_data["join_url"]
+    original_token = create_data["token"]
+
+    # 1. Fetch invite link via GET
+    get_resp = await client.get(
+        f"/api/v1/interviews/{interview_id}/invite-link",
+        headers=_auth_headers(user.id),
+    )
+    assert get_resp.status_code == 200
+    get_data = get_resp.json()
+    assert get_data["interview_id"] == interview_id
+    assert get_data["token"] == original_token
+    assert get_data["join_url"] == original_join_url
+    assert "expires_at" in get_data
+
+    # 2. Fetch invite link via POST (idempotent)
+    post_resp = await client.post(
+        f"/api/v1/interviews/{interview_id}/invite-link",
+        headers=_auth_headers(user.id),
+    )
+    assert post_resp.status_code == 200
+    post_data = post_resp.json()
+    assert post_data["token"] == original_token
+    assert post_data["join_url"] == original_join_url
+
+    # 3. Verify exactly 1 candidate invitation exists for this interview
+    invitations_stmt = select(InterviewInvitation).where(
+        InterviewInvitation.interview_id == uuid.UUID(interview_id),
+        InterviewInvitation.recipient_type == RecipientType.CANDIDATE,
+    )
+    invs = (await db_session.execute(invitations_stmt)).scalars().all()
+    assert len(invs) == 1
+
+    # 4. Verify candidate can use the returned token to view public join info
+    cand_resp = await client.get(f"/api/v1/interviews/join/{original_token}")
+    assert cand_resp.status_code == 200
+    cand_data = cand_resp.json()
+    assert cand_data["interview_id"] == interview_id
+
+
+@pytest.mark.asyncio
+async def test_get_interview_invite_link_authorization_check(client: AsyncClient, db_session):
+    """Unauthorized user cannot access candidate invite link."""
+    user1, ws1, org1 = await _create_user_workspace(db_session)
+    user2, ws2, org2 = await _create_user_workspace(db_session)
+    await db_session.commit()
+
+    # User 1 creates interview
+    create_resp = await client.post(
+        "/api/v1/interviews/instant",
+        json={"workspace_id": str(ws1.id), "interview_type": "technical", "duration_minutes": 60},
+        headers=_auth_headers(user1.id),
+    )
+    interview_id = create_resp.json()["interview_id"]
+
+    # User 2 attempts to fetch invite link -> 403 or 404 forbidden
+    unauth_resp = await client.get(
+        f"/api/v1/interviews/{interview_id}/invite-link",
+        headers=_auth_headers(user2.id),
+    )
+    assert unauth_resp.status_code in (403, 404)
+
+    # Anonymous user -> 401
+    anon_resp = await client.get(f"/api/v1/interviews/{interview_id}/invite-link")
+    assert anon_resp.status_code == 401
+
+
