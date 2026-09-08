@@ -146,6 +146,38 @@ class Settings(BaseSettings):
     TURN_USERNAME: str = ""
     TURN_CREDENTIAL: str = ""
 
+    @field_validator("STUN_SERVER_URL", mode="before")
+    @classmethod
+    def assemble_stun_url(cls, v: str) -> str:
+        if v and isinstance(v, str) and v.strip():
+            return v.strip()
+        import os
+        return os.environ.get("NEXT_PUBLIC_STUN_URL", "stun:stun.l.google.com:19302").strip()
+
+    @field_validator("TURN_SERVER_URL", mode="before")
+    @classmethod
+    def assemble_turn_url(cls, v: str) -> str:
+        if v and isinstance(v, str) and v.strip():
+            return v.strip()
+        import os
+        return os.environ.get("NEXT_PUBLIC_TURN_URL", "").strip()
+
+    @field_validator("TURN_USERNAME", mode="before")
+    @classmethod
+    def assemble_turn_username(cls, v: str) -> str:
+        if v and isinstance(v, str) and v.strip():
+            return v.strip()
+        import os
+        return os.environ.get("NEXT_PUBLIC_TURN_USERNAME", "").strip()
+
+    @field_validator("TURN_CREDENTIAL", mode="before")
+    @classmethod
+    def assemble_turn_credential(cls, v: str) -> str:
+        if v and isinstance(v, str) and v.strip():
+            return v.strip()
+        import os
+        return os.environ.get("NEXT_PUBLIC_TURN_CREDENTIAL", "").strip()
+
     # Email / SMTP
     SMTP_HOST: str = "localhost"
     SMTP_PORT: int = 1025

@@ -34,6 +34,7 @@ import { setApiAuthToken } from '@/lib/api';
 import { RealtimeClient, ConnectionState, resolveRealtimeUrl } from '@/lib/realtime/realtime-client';
 import { PeerConnectionManager } from '@/lib/webrtc/peer-connection-manager';
 import { SignalingManager } from '@/lib/webrtc/signaling-manager';
+import { buildEffectiveIceServers, resolveIceTransportPolicy } from '@/lib/webrtc/ice-config';
 import { useChatStore } from '@/lib/stores/use-chat-store';
 import { ChatPanel } from '@/components/interview-room/chat/chat-panel';
 import { CodingWorkspace } from '@/components/interview-room/coding/coding-workspace';
@@ -208,9 +209,10 @@ export default function CandidateRoomPage() {
           setApiAuthToken(roomData.candidate_join_token);
         }
 
-        // Initialize WebRTC PeerConnectionManager
+        // Initialize WebRTC PeerConnectionManager with effective STUN/TURN servers
         const peerManager = new PeerConnectionManager({
-          iceServers: roomData.ice_servers || [{ urls: 'stun:stun.l.google.com:19302' }],
+          iceServers: buildEffectiveIceServers(roomData.ice_servers),
+          iceTransportPolicy: resolveIceTransportPolicy(),
           sessionId: sessId,
           localUserId: candId,
           localUserName: candDisplayName,

@@ -40,6 +40,7 @@ import { PeerConnectionManager } from '@/lib/webrtc/peer-connection-manager';
 import { SignalingManager } from '@/lib/webrtc/signaling-manager';
 import { MediaDeviceSettings } from '@/lib/webrtc/types';
 import { AudioSTTManager } from '@/lib/webrtc/audio-stt-manager';
+import { buildEffectiveIceServers, resolveIceTransportPolicy } from '@/lib/webrtc/ice-config';
 import { VideoTile } from '@/components/interview-room/video-tile';
 import { DeviceCheckModal } from '@/components/interview-room/device-check-modal';
 import { DeviceSettingsModal } from '@/components/interview-room/device-settings-modal';
@@ -220,9 +221,10 @@ export default function InterviewRoomPage() {
     mediaManagerRef.current = mediaManager;
     mediaManager.setLocalStream(activeStream);
 
-    // Initialize PeerConnectionManager with ICE servers from backend
+    // Initialize PeerConnectionManager with effective STUN/TURN servers
     const peerManager = new PeerConnectionManager({
-      iceServers: joinData.ice_servers || [{ urls: 'stun:stun.l.google.com:19302' }],
+      iceServers: buildEffectiveIceServers(joinData.ice_servers),
+      iceTransportPolicy: resolveIceTransportPolicy(),
       sessionId: String(session.id),
       localUserId: String(joinData.user_id),
       localUserName: joinData.user_name || 'User',

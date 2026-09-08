@@ -1,4 +1,5 @@
 import logging
+import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -602,14 +603,22 @@ class InterviewSessionService:
     def get_ice_servers(self) -> List[Dict[str, Any]]:
         """Returns standard WebRTC STUN/TURN ICE server configuration."""
         servers = []
-        if getattr(settings, "STUN_SERVER_URL", None):
-            servers.append({"urls": settings.STUN_SERVER_URL})
-        if getattr(settings, "TURN_SERVER_URL", None):
-            turn_entry: Dict[str, Any] = {"urls": settings.TURN_SERVER_URL}
-            if getattr(settings, "TURN_USERNAME", None):
-                turn_entry["username"] = settings.TURN_USERNAME
-            if getattr(settings, "TURN_CREDENTIAL", None):
-                turn_entry["credential"] = settings.TURN_CREDENTIAL
+        stun_url = getattr(settings, "STUN_SERVER_URL", None) or os.environ.get("NEXT_PUBLIC_STUN_URL", "stun:stun.l.google.com:19302")
+        if stun_url:
+            servers.append({"urls": stun_url})
+
+        turn_url = getattr(settings, "TURN_SERVER_URL", None) or os.environ.get("NEXT_PUBLIC_TURN_URL", "")
+        if turn_url:
+            urls = [u.strip() for u in turn_url.split(",") if u.strip()]
+            turn_entry: Dict[str, Any] = {
+                "urls": urls if len(urls) > 1 else urls[0]
+            }
+            turn_username = getattr(settings, "TURN_USERNAME", None) or os.environ.get("NEXT_PUBLIC_TURN_USERNAME", "")
+            if turn_username:
+                turn_entry["username"] = turn_username
+            turn_credential = getattr(settings, "TURN_CREDENTIAL", None) or os.environ.get("NEXT_PUBLIC_TURN_CREDENTIAL", "")
+            if turn_credential:
+                turn_entry["credential"] = turn_credential
             servers.append(turn_entry)
         return servers
 

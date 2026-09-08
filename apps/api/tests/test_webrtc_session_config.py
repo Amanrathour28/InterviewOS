@@ -43,3 +43,22 @@ async def test_webrtc_ice_servers_in_join_token(client: AsyncClient):
     assert len(data["ice_servers"]) >= 1
     assert "urls" in data["ice_servers"][0]
     assert "stun" in data["ice_servers"][0]["urls"].lower()
+
+
+@pytest.mark.asyncio
+async def test_webrtc_turn_servers_in_ice_config(monkeypatch):
+    from app.services.session_service import session_service
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "STUN_SERVER_URL", "stun:stun.l.google.com:19302")
+    monkeypatch.setattr(settings, "TURN_SERVER_URL", "turn:relay.example.com:3478,turns:relay.example.com:5349")
+    monkeypatch.setattr(settings, "TURN_USERNAME", "test_turn_user")
+    monkeypatch.setattr(settings, "TURN_CREDENTIAL", "test_turn_pass")
+
+    servers = session_service.get_ice_servers()
+    assert len(servers) == 2
+    assert servers[0]["urls"] == "stun:stun.l.google.com:19302"
+    assert servers[1]["urls"] == ["turn:relay.example.com:3478", "turns:relay.example.com:5349"]
+    assert servers[1]["username"] == "test_turn_user"
+    assert servers[1]["credential"] == "test_turn_pass"
+

@@ -55,6 +55,7 @@ export interface NetworkDiagnostics {
 
 export interface WebRTCConfiguration {
   iceServers: RTCIceServer[];
+  iceTransportPolicy?: RTCIceTransportPolicy;
   sessionId: string;
   localUserId: string;
   localUserName: string;

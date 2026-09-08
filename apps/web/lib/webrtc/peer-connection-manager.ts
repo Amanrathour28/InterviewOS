@@ -107,7 +107,7 @@ export class PeerConnectionManager {
       iceServers: this.config.iceServers || [
         { urls: 'stun:stun.l.google.com:19302' },
       ],
-      iceTransportPolicy: 'all',
+      iceTransportPolicy: this.config.iceTransportPolicy || 'all',
       bundlePolicy: 'max-bundle',
     });
 
@@ -169,6 +169,7 @@ export class PeerConnectionManager {
     // 2. ICE candidate generation
     pc.onicecandidate = (event) => {
       if (event.candidate) {
+        console.log(`[WebRTC Peer ${userId}] ICE candidate generated: type=${event.candidate.type}, protocol=${event.candidate.protocol}`);
         this.onSendSignal?.({
           signalType: 'candidate',
           targetUserId: userId,
