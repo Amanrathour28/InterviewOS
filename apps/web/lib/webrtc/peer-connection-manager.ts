@@ -146,7 +146,7 @@ export class PeerConnectionManager {
     // 1. Negotiation needed (Perfect Negotiation pattern)
     pc.onnegotiationneeded = async () => {
       try {
-        peer.makingOffer = true;
+        if (pc.signalingState !== 'stable') return;
         const offer = await pc.createOffer();
         if (pc.signalingState !== 'stable') return;
         await pc.setLocalDescription(offer);

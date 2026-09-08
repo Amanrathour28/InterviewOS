@@ -130,11 +130,20 @@ export class RealtimeClient {
       auth: { token: this.options.token },
       transports: ['websocket', 'polling'],
       reconnection: true,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 4000,
       timeout: 10000,
     });
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', () => {
+        console.log('[RealtimeClient] Browser online event detected, ensuring socket connection is active...');
+        if (!this.socket?.connected) {
+          this.socket?.connect();
+        }
+      });
+    }
 
     // Re-bind all dynamically registered listeners
     this.listeners.forEach((handlers, event) => {
@@ -142,6 +151,7 @@ export class RealtimeClient {
     });
 
     this.socket.on('connect', () => {
+      console.log('[RealtimeClient] Connected to Socket.IO gateway. Socket ID:', this.socket?.id);
       this.connectionState = 'connected';
       this.reconnectAttempts = 0;
       this.disconnectReason = null;
